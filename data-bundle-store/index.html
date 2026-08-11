@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    :root{
+      --navy:#0f2747;
+      --navy-2:#153562;
+      --navy-3:#1c4079;
+      --gold:#ffc93c;
+      --gold-2:#ffb800;
+      --ink:#0b1c33;
+      --muted:#64748b;
+      --bg:#f4f6fb;
+      --card:#ffffff;
+      --border:#e6eaf2;
+      --success:#16a34a;
+      --success-bg:#e9f9ef;
+      --danger:#dc2626;
+      --danger-bg:#fdecec;
+      --warn:#d97706;
+      --warn-bg:#fef3e2;
+      --radius:18px;
+      --radius-sm:12px;
+      --shadow: 0 10px 30px -12px rgba(15,39,71,.18);
+      --shadow-lg: 0 20px 50px -16px rgba(15,39,71,.28);
+      --mtn:#ffcb05;
+      --mtn-ink:#3a2f00;
+      --telecel:#e2001a;
+      --at-1:#ed1c24;
+      --at-2:#0033a0;
+    }
+    *{box-sizing:border-box;}
+    html,body{margin:0;padding:0;}
+    body{
+      font-family:'Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+      background:var(--bg);
+      color:var(--ink);
+      -webkit-font-smoothing:antialiased;
+    }
+    a{color:inherit;text-decoration:none;}
+    button{font-family:inherit;cursor:pointer;}
+    input,select,textarea{font-family:inherit;}
+    ::-webkit-scrollbar{width:8px;height:8px;}
+    ::-webkit-scrollbar-thumb{background:#c9d3e3;border-radius:8px;}
+
+    #app{min-height:100vh;}
+    .hidden{display:none !important;}
+
+    /* ---------- Loading ---------- */
+    .boot-loader{
+      min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;
+      background:radial-gradient(circle at 30% 20%, var(--navy-3), var(--navy) 70%);
+      color:#fff;
+    }
+    .spinner{width:44px;height:44px;border-radius:50%;border:4px solid rgba(255,255,255,.25);border-top-color:var(--gold);animation:spin 0.8s linear infinite;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+
+    /* ---------- Shared layout ---------- */
+    .nav{
+      position:sticky;top:0;z-index:50;
+      background:linear-gradient(120deg,var(--navy),var(--navy-2) 60%,var(--navy-3));
+      color:#fff;
+      padding:14px 20px;
+      display:flex;align-items:center;justify-content:space-between;
+      box-shadow:var(--shadow);
+    }
+    .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:.2px;}
+    .brand .logo{
+      width:38px;height:38px;border-radius:11px;
+      background:linear-gradient(145deg,var(--gold),var(--gold-2));
+      display:flex;align-items:center;justify-content:center;font-size:19px;
+      box-shadow:0 4px 12px rgba(255,184,0,.4);
+    }
+    .brand small{display:block;font-weight:400;font-size:11px;color:#c8d4ea;letter-spacing:.4px;}
+    .nav-actions{display:flex;gap:10px;align-items:center;}
+    .icon-btn{
+      background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);color:#fff;
+      width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;
+      transition:.15s;
+    }
+    .icon-btn:hover{background:rgba(255,255,255,.22);}
+
+    .btn{
+      border:none;border-radius:12px;padding:12px 18px;font-weight:700;font-size:14.5px;
+      transition:transform .12s ease, box-shadow .12s ease, opacity .12s ease;
+      display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    }
+    .btn:active{transform:scale(.97);}
+    .btn-gold{background:linear-gradient(145deg,var(--gold),var(--gold-2));color:var(--navy);box-shadow:0 8px 20px -8px rgba(255,184,0,.6);}
+    .btn-gold:hover{box-shadow:0 10px 26px -6px rgba(255,184,0,.7);}
+    .btn-navy{background:linear-gradient(145deg,var(--navy-2),var(--navy));color:#fff;box-shadow:0 8px 20px -10px rgba(15,39,71,.6);}
+    .btn-outline{background:#fff;color:var(--navy);border:1.5px solid var(--border);}
+    .btn-outline:hover{border-color:var(--navy-3);}
+    .btn-danger{background:var(--danger-bg);color:var(--danger);}
+    .btn-success{background:var(--success-bg);color:var(--success);}
+    .btn-sm{padding:8px 12px;font-size:13px;border-radius:9px;}
+    .btn-block{width:100%;}
+    .btn[disabled]{opacity:.55;cursor:not-allowed;}
+
+    .container{max-width:960px;margin:0 auto;padding:0 18px;}
+    .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;}
+    .muted{color:var(--muted);}
+    .section-title{font-size:22px;font-weight:800;margin:0 0 4px;color:var(--navy);}
+    .section-sub{color:var(--muted);font-size:14px;margin:0 0 18px;}
+
+    /* ---------- Toasts ---------- */
+    #toast-stack{position:fixed;top:16px;right:16px;z-index:999;display:flex;flex-direction:column;gap:10px;max-width:340px;}
+    .toast{
+      background:var(--navy);color:#fff;padding:13px 16px;border-radius:12px;box-shadow:var(--shadow-lg);
+      font-size:14px;animation:slideIn .25s ease;
+    }
+    .toast.error{background:var(--danger);}
+    .toast.success{background:var(--success);}
+    @keyframes slideIn{from{opacity:0;transform:translateX(24px);}to{opacity:1;transform:translateX(0);}}
+
+    /* ---------- Store: hero ---------- */
+    .hero{
+      background:
+        radial-gradient(circle at 15% 0%, rgba(255,201,60,.18), transparent 45%),
+        radial-gradient(circle at 90% 10%, rgba(28,64,121,.5), transparent 55%),
+        linear-gradient(135deg,var(--navy),var(--navy-2) 55%, var(--navy-3));
+      color:#fff;padding:38px 0 46px;
+    }
+    .hero h1{font-size:30px;margin:0 0 8px;font-weight:800;}
+    .hero p{margin:0 0 20px;color:#cfd9ee;font-size:15px;max-width:520px;}
+    .trust-row{display:flex;gap:10px;flex-wrap:wrap;}
+    .trust-chip{
+      background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
+      padding:8px 13px;border-radius:999px;font-size:12.5px;font-weight:600;
+      display:flex;align-items:center;gap:6px;
+    }
+
+    /* ---------- Network tabs ---------- */
+    .net-tabs{display:flex;gap:10px;margin:-24px 0 22px;position:relative;z-index:2;flex-wrap:wrap;}
+    .net-tab{
+      padding:12px 20px;border-radius:14px;font-weight:800;font-size:14.5px;border:2px solid transparent;
+      background:#fff;color:var(--navy);box-shadow:var(--shadow);transition:.15s;
+    }
+    .net-tab.active[data-net="MTN"]{background:var(--mtn);color:var(--mtn-ink);border-color:#e0b600;}
+    .net-tab.active[data-net="Telecel"]{background:var(--telecel);color:#fff;border-color:#a8000f;}
+    .net-tab.active[data-net="AirtelTigo"]{background:linear-gradient(120deg,var(--at-1),var(--at-2));color:#fff;border-color:#0033a0;}
+
+    /* ---------- Package grid ---------- */
+    .pkg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:36px;}
+    .pkg-card{
+      background:#fff;border-radius:16px;padding:18px 16px;box-shadow:var(--shadow);
+      border:1px solid var(--border);transition:transform .15s ease, box-shadow .15s ease;
+      display:flex;flex-direction:column;gap:10px;
+    }
+    .pkg-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg);}
+    .pkg-size{font-size:24px;font-weight:800;color:var(--navy);}
+    .pkg-validity{font-size:12px;color:var(--muted);font-weight:600;}
+    .pkg-price{font-size:19px;font-weight:800;color:var(--gold-2);margin-top:2px;}
+    .empty-state{padding:40px 16px;text-align:center;color:var(--muted);}
+    .empty-state .big-emoji{font-size:38px;display:block;margin-bottom:10px;}
+
+    footer.store-footer{padding:30px 0 60px;text-align:center;color:var(--muted);font-size:13px;}
+    footer.store-footer a{color:var(--navy-2);font-weight:700;}
+
+    /* ---------- Modal ---------- */
+    .overlay{
+      position:fixed;inset:0;background:rgba(11,28,51,.55);backdrop-filter:blur(2px);
+      display:flex;align-items:flex-end;justify-content:center;z-index:200;
+      animation:fadeIn .15s ease;
+    }
+    @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+    @media(min-width:640px){ .overlay{align-items:center;} }
+    .modal{
+      background:#fff;border-radius:22px 22px 0 0;padding:24px;max-width:460px;width:100%;
+      max-height:92vh;overflow-y:auto;box-shadow:var(--shadow-lg);animation:slideUp .2s ease;
+    }
+    @media(min-width:640px){ .modal{border-radius:22px;} }
+    @keyframes slideUp{from{transform:translateY(30px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+    .modal-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;}
+    .modal-head h3{margin:0;font-size:19px;color:var(--navy);}
+    .modal-close{background:#f1f4fa;border:none;width:32px;height:32px;border-radius:10px;font-size:16px;color:var(--muted);}
+
+    .field{margin-bottom:14px;}
+    .field label{display:block;font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.4px;text-transform:uppercase;margin-bottom:6px;}
+    .field input,.field select,.field textarea{
+      width:100%;padding:12px 13px;border:1.5px solid var(--border);border-radius:11px;font-size:14.5px;
+      background:#fafbfd;transition:.15s;
+    }
+    .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--navy-3);background:#fff;}
+    .hint{font-size:12px;color:var(--muted);margin-top:5px;}
+
+    .pay-box{background:var(--warn-bg);border:1px solid #f7d9a6;border-radius:14px;padding:14px 16px;margin-bottom:16px;}
+    .pay-box strong{color:#8a5a05;}
+    .pay-row{display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:5px 0;}
+    .pay-row b{font-size:16px;}
+    .copy-btn{background:#fff;border:1px solid #e9c98a;color:#8a5a05;font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:8px;}
+
+    .success-panel{text-align:center;padding:10px 4px 4px;}
+    .success-check{
+      width:64px;height:64px;border-radius:50%;background:var(--success-bg);color:var(--success);
+      display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 14px;
+    }
+    .order-ref{
+      font-family:'SFMono-Regular',Consolas,monospace;font-size:20px;font-weight:800;color:var(--navy);
+      background:#f1f4fa;padding:10px 14px;border-radius:12px;display:inline-block;margin:8px 0 16px;letter-spacing:.5px;
+    }
+
+    /* ---------- Admin shell ---------- */
+    .admin-body{display:flex;min-height:100vh;}
+    .admin-side{
+      width:230px;flex-shrink:0;background:linear-gradient(180deg,var(--navy),var(--navy-2));color:#fff;
+      padding:22px 16px;display:flex;flex-direction:column;gap:4px;
+    }
+    .admin-side .brand{margin-bottom:22px;}
+    .side-link{
+      padding:11px 13px;border-radius:11px;font-weight:600;font-size:14.5px;color:#cfd9ee;
+      display:flex;align-items:center;gap:10px;transition:.15s;
+    }
+    .side-link:hover{background:rgba(255,255,255,.08);color:#fff;}
+    .side-link.active{background:rgba(255,201,60,.16);color:var(--gold);}
+    .side-foot{margin-top:auto;padding-top:16px;border-top:1px solid rgba(255,255,255,.12);font-size:12px;color:#93a3c2;}
+    .admin-main{flex:1;padding:26px 30px 60px;min-width:0;}
+    .admin-topbar{display:none;}
+    @media(max-width:820px){
+      .admin-side{position:fixed;left:-260px;top:0;bottom:0;z-index:100;transition:left .2s ease;box-shadow:var(--shadow-lg);}
+      .admin-side.open{left:0;}
+      .admin-main{padding:18px 16px 50px;}
+      .admin-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+      .side-scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:90;}
+      .side-scrim.open{display:block;}
+    }
+
+    .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:26px;}
+    .stat-card{border-radius:18px;padding:20px;color:#fff;box-shadow:var(--shadow);position:relative;overflow:hidden;}
+    .stat-card .stat-icon{width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-size:19px;margin-bottom:14px;}
+    .stat-card .stat-label{font-size:13px;opacity:.92;font-weight:600;}
+    .stat-card .stat-value{font-size:28px;font-weight:800;margin-top:6px;}
+    .stat-1{background:linear-gradient(135deg,#12b886,#0a8f6c);}
+    .stat-2{background:linear-gradient(135deg,#7c6cf7,#4b3cd6);}
+    .stat-3{background:linear-gradient(135deg,#f7a531,#e8791a);}
+    .stat-4{background:linear-gradient(135deg,#f4436c,#d81c53);}
+
+    .tabbar{display:flex;gap:6px;border-bottom:2px solid var(--border);margin-bottom:22px;flex-wrap:wrap;}
+    .tabbar button{
+      background:none;border:none;padding:12px 6px;margin-right:18px;font-weight:700;color:var(--muted);
+      border-bottom:3px solid transparent;font-size:14.5px;
+    }
+    .tabbar button.active{color:var(--navy);border-color:var(--gold-2);}
+
+    table.data-table{width:100%;border-collapse:collapse;font-size:13.5px;}
+    .table-wrap{overflow-x:auto;border-radius:14px;border:1px solid var(--border);}
+    table.data-table th{
+      text-align:left;background:#f7f9fc;color:var(--muted);font-size:11px;letter-spacing:.4px;text-transform:uppercase;
+      padding:12px 14px;white-space:nowrap;
+    }
+    table.data-table td{padding:12px 14px;border-top:1px solid var(--border);white-space:nowrap;}
+    table.data-table tr:hover td{background:#fafbfe;}
+    .price-input{width:80px;padding:8px 9px;border:1.5px solid var(--border);border-radius:9px;font-size:13.5px;}
+    .profit-pos{color:var(--success);font-weight:700;}
+    .profit-neg{color:var(--danger);font-weight:700;}
+
+    .badge{padding:4px 10px;border-radius:999px;font-size:11.5px;font-weight:700;display:inline-block;}
+    .badge-pending{background:var(--warn-bg);color:var(--warn);}
+    .badge-paid{background:#e7f0fe;color:#1d4ed8;}
+    .badge-processing{background:#eef1ff;color:#4b3cd6;}
+    .badge-delivered{background:var(--success-bg);color:var(--success);}
+    .badge-failed{background:var(--danger-bg);color:var(--danger);}
+    .badge-cancelled{background:#f1f4fa;color:var(--muted);}
+
+    .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px;}
+    .toolbar select{padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);font-size:13.5px;}
+
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+    @media(max-width:520px){.form-grid{grid-template-columns:1fr;}}
+
+    .lock-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+      background:radial-gradient(circle at 30% 20%,var(--navy-3),var(--navy) 70%);}
+    .lock-card{background:#fff;border-radius:20px;padding:34px 28px;max-width:400px;width:100%;text-align:center;box-shadow:var(--shadow-lg);}
+    .lock-emoji{font-size:44px;margin-bottom:10px;}
+
+    .row-actions{display:flex;gap:6px;flex-wrap:wrap;}
+    .switch{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted);}
+    .switch input{width:38px;height:20px;}
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="boot-loader">
+      <div class="spinner"></div>
+      <div>Loading…</div>
+    </div>
+  </div>
+  <div id="toast-stack"></div>
+
+  <script>
+    window.__INITIAL_PAGE__ = "<?= initialPage ?>";
+    window.__APP_URL__ = "<?= appUrl ?>";
+  </script>
+  <script>
+  (function () {
+    'use strict';
+
+    // ======================================================================
+    // Helpers
+    // ======================================================================
+    var STATE = {
+      page: window.__INITIAL_PAGE__ || 'store',
+      store: null,
+      admin: null,
+      currentNetwork: 'MTN',
+      adminTab: 'dashboard',
+      orderFilter: 'All',
+      pendingPackage: null
+    };
+
+    function $(sel, root) { return (root || document).querySelector(sel); }
+    function el(html) {
+      var t = document.createElement('template');
+      t.innerHTML = html.trim();
+      return t.content.firstChild;
+    }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function money(settings, n) {
+      var sym = (settings && settings.currency) || 'GH₵';
+      return sym + Number(n || 0).toFixed(2);
+    }
+    function toast(message, type) {
+      var stack = $('#toast-stack');
+      var node = el('<div class="toast">' + esc(message) + '</div>');
+      if (type) node.classList.add(type);
+      stack.appendChild(node);
+      setTimeout(function () {
+        node.style.transition = 'opacity .25s';
+        node.style.opacity = '0';
+        setTimeout(function () { node.remove(); }, 250);
+      }, 3800);
+    }
+    function navigateTo(page) {
+      var base = window.__APP_URL__ || '';
+      var url = base + (base.indexOf('?') === -1 ? '?' : '&') + 'page=' + page;
+      try { window.top.location.href = url; } catch (e) { window.location.href = url; }
+    }
+    function run(fnName) {
+      var args = Array.prototype.slice.call(arguments, 1);
+      return new Promise(function (resolve, reject) {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(function (err) { reject(err); })[fnName].apply(null, args);
+      });
+    }
+    function setBusy(btn, busy, busyLabel) {
+      if (!btn) return;
+      if (busy) {
+        btn.dataset.label = btn.dataset.label || btn.textContent;
+        btn.textContent = busyLabel || 'Please wait…';
+        btn.disabled = true;
+      } else {
+        btn.textContent = btn.dataset.label || btn.textContent;
+        btn.disabled = false;
+      }
+    }
+
+    var STATUS_CLASS = {
+      'Pending Payment': 'badge-pending',
+      'Paid - Awaiting Fulfillment': 'badge-paid',
+      'Processing': 'badge-processing',
+      'Delivered': 'badge-delivered',
+      'Failed': 'badge-failed',
+      'Cancelled': 'badge-cancelled'
+    };
+
+    var NETWORK_ICON = { MTN: '📶', Telecel: '📡', AirtelTigo: '📱' };
+
+    // ======================================================================
+    // Boot
+    // ======================================================================
+    function boot() {
+      if (STATE.page === 'admin') loadAdmin(); else loadStore();
+    }
+
+    // ======================================================================
+    // STOREFRONT
+    // ======================================================================
+    function loadStore() {
+      run('getStoreBootstrap').then(function (data) {
+        STATE.store = data;
+        var networks = data.networks || [];
+        STATE.currentNetwork = networks.filter(function (n) { return (data.packagesByNetwork[n] || []).length; })[0] || networks[0];
+        renderStore();
+      }).catch(function (err) { renderFatal(err); });
+    }
+
+    function renderStore() {
+      var s = STATE.store.settings;
+      var app = $('#app');
+      app.innerHTML =
+        '<nav class="nav">' +
+          '<div class="brand"><div class="logo">📶</div><div>' + esc(s.storeName) +
+            '<small>Data bundles, delivered fast</small></div></div>' +
+          '<div class="nav-actions">' +
+            (s.whatsapp ? '<a class="icon-btn" title="Chat on WhatsApp" href="https://wa.me/' + esc(waNumber(s.whatsapp)) + '" target="_blank">💬</a>' : '') +
+            '<button class="icon-btn" id="track-btn" title="Track my order">🔍</button>' +
+          '</div>' +
+        '</nav>' +
+        '<div class="hero"><div class="container">' +
+          '<h1>Buy data bundles in seconds</h1>' +
+          '<p>' + esc(s.tagline) + '</p>' +
+          '<div class="trust-row">' +
+            '<div class="trust-chip">⚡ Fast delivery</div>' +
+            '<div class="trust-chip">🔒 Secure MoMo payment</div>' +
+            '<div class="trust-chip">🏷️ Best local prices</div>' +
+          '</div>' +
+        '</div></div>' +
+        '<div class="container">' +
+          '<div class="net-tabs" id="net-tabs"></div>' +
+          '<div id="pkg-grid" class="pkg-grid"></div>' +
+        '</div>' +
+        '<footer class="store-footer"><div class="container">' +
+          (s.whatsapp ? 'Questions? <a href="https://wa.me/' + esc(waNumber(s.whatsapp)) + '" target="_blank">Message us on WhatsApp</a> · ' : '') +
+          '<a href="#" id="agent-login-link">Agent login</a>' +
+        '</div></footer>';
+
+      renderNetworkTabs();
+      renderPkgGrid();
+
+      $('#agent-login-link').addEventListener('click', function (e) { e.preventDefault(); navigateTo('admin'); });
+      $('#track-btn').addEventListener('click', openTrackModal);
+    }
+
+    function waNumber(n) {
+      n = String(n || '').replace(/\D/g, '');
+      if (n.indexOf('0') === 0) n = '233' + n.substring(1);
+      return n;
+    }
+
+    function renderNetworkTabs() {
+      var wrap = $('#net-tabs');
+      wrap.innerHTML = '';
+      (STATE.store.networks || []).forEach(function (n) {
+        var count = (STATE.store.packagesByNetwork[n] || []).length;
+        var btn = el('<button class="net-tab' + (STATE.currentNetwork === n ? ' active' : '') + '" data-net="' + n + '">' +
+          NETWORK_ICON[n] + ' ' + n + (count ? '' : ' <span style="opacity:.55;font-weight:600;">(soon)</span>') + '</button>');
+        btn.addEventListener('click', function () { STATE.currentNetwork = n; renderNetworkTabs(); renderPkgGrid(); });
+        wrap.appendChild(btn);
+      });
+    }
+
+    function renderPkgGrid() {
+      var grid = $('#pkg-grid');
+      var packages = STATE.store.packagesByNetwork[STATE.currentNetwork] || [];
+      if (!packages.length) {
+        grid.style.display = 'block';
+        grid.innerHTML = '<div class="empty-state card"><span class="big-emoji">🕒</span>No ' + esc(STATE.currentNetwork) + ' bundles available right now. Check back soon!</div>';
+        return;
+      }
+      grid.style.display = 'grid';
+      grid.innerHTML = '';
+      packages.forEach(function (p) {
+        var card = el(
+          '<div class="pkg-card">' +
+            '<div><div class="pkg-size">' + esc(p.size) + '</div><div class="pkg-validity">' + esc(p.validity || '') + ' validity</div></div>' +
+            '<div class="pkg-price">' + money(STATE.store.settings, p.price) + '</div>' +
+            '<button class="btn btn-navy btn-block btn-sm">Buy now</button>' +
+          '</div>'
+        );
+        card.querySelector('button').addEventListener('click', function () { openBuyModal(p); });
+        grid.appendChild(card);
+      });
+    }
+
+    function openModal(node) {
+      var overlay = el('<div class="overlay"></div>');
+      overlay.appendChild(node);
+      overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+      document.body.appendChild(overlay);
+      return overlay;
+    }
+
+    function openBuyModal(pkg) {
+      var s = STATE.store.settings;
+      var modal = el(
+        '<div class="modal">' +
+          '<div class="modal-head"><h3>' + STATE.currentNetwork + ' ' + esc(pkg.size) + '</h3><button class="modal-close">✕</button></div>' +
+          '<div class="pay-box">' +
+            '<div style="margin-bottom:6px;"><strong>Step 1 — Pay via MoMo</strong></div>' +
+            (s.momoNumber ?
+              '<div class="pay-row"><span>Send to</span><b>' + esc(s.momoNumber) + '</b></div>' +
+              '<div class="pay-row"><span>Name on MoMo</span><b>' + esc(s.momoName || '—') + '</b></div>' +
+              '<div class="pay-row"><span>Amount</span><b>' + money(s, pkg.price) + '</b></div>'
+              : '<div class="hint">The store owner hasn\'t added MoMo details yet — contact them via WhatsApp.</div>') +
+          '</div>' +
+          '<div style="margin-bottom:10px;"><strong>Step 2 — Confirm your order</strong></div>' +
+          '<form id="order-form">' +
+            '<div class="field"><label>Your name</label><input required name="customerName" placeholder="e.g. Ama Boateng"></div>' +
+            '<div class="field"><label>Phone to receive the data</label><input required name="recipientPhone" placeholder="0244000000"></div>' +
+            '<div class="field"><label>MoMo number you paid from</label><input required name="payerPhone" placeholder="0244000000"></div>' +
+            '<div class="field"><label>MoMo transaction reference</label><input required name="momoRef" placeholder="e.g. from your MoMo SMS"></div>' +
+            '<button type="submit" class="btn btn-gold btn-block">Submit order — ' + money(s, pkg.price) + '</button>' +
+          '</form>' +
+        '</div>'
+      );
+      var overlay = openModal(modal);
+      modal.querySelector('.modal-close').addEventListener('click', function () { overlay.remove(); });
+      modal.querySelector('#order-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var fd = new FormData(e.target);
+        var payload = { packageId: pkg.id };
+        fd.forEach(function (v, k) { payload[k] = v; });
+        var btn = e.target.querySelector('button[type="submit"]');
+        setBusy(btn, true, 'Submitting…');
+        run('submitOrder', payload).then(function (res) {
+          overlay.remove();
+          showOrderSuccess(res);
+        }).catch(function (err) {
+          setBusy(btn, false);
+          toast(err.message || String(err), 'error');
+        });
+      });
+    }
+
+    function showOrderSuccess(res) {
+      var s = STATE.store.settings;
+      var waMsg = encodeURIComponent('Hi, I just paid for order ' + res.orderId + ' (' + res.network + ' ' + res.size + ', ' + money(s, res.amount) + '). Please confirm and deliver 🙏');
+      var modal = el(
+        '<div class="modal">' +
+          '<div class="success-panel">' +
+            '<div class="success-check">✓</div>' +
+            '<h3 style="margin:0;color:var(--navy);">Order received!</h3>' +
+            '<p class="muted" style="font-size:13.5px;">Show this reference if you need to follow up.</p>' +
+            '<div class="order-ref">' + esc(res.orderId) + '</div>' +
+            '<p class="muted" style="font-size:13.5px;">' + res.network + ' ' + res.size + ' — ' + money(s, res.amount) + '<br>Status: Pending confirmation</p>' +
+            (s.whatsapp ?
+              '<a class="btn btn-gold btn-block" style="margin-top:14px;" target="_blank" href="https://wa.me/' + esc(waNumber(s.whatsapp)) + '?text=' + waMsg + '">💬 Notify us on WhatsApp</a>'
+              : '') +
+            '<button class="btn btn-outline btn-block" style="margin-top:10px;" id="close-success">Done</button>' +
+          '</div>' +
+        '</div>'
+      );
+      var overlay = openModal(modal);
+      modal.querySelector('#close-success').addEventListener('click', function () { overlay.remove(); });
+    }
+
+    function openTrackModal() {
+      var modal = el(
+        '<div class="modal">' +
+          '<div class="modal-head"><h3>Track my order</h3><button class="modal-close">✕</button></div>' +
+          '<form id="track-form">' +
+            '<div class="field"><label>Order reference</label><input required name="orderId" placeholder="DBS-000000-0000"></div>' +
+            '<div class="field"><label>Recipient phone used</label><input required name="phone" placeholder="0244000000"></div>' +
+            '<button type="submit" class="btn btn-navy btn-block">Check status</button>' +
+          '</form>' +
+          '<div id="track-result" style="margin-top:14px;"></div>' +
+        '</div>'
+      );
+      var overlay = openModal(modal);
+      modal.querySelector('.modal-close').addEventListener('click', function () { overlay.remove(); });
+      modal.querySelector('#track-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var fd = new FormData(e.target);
+        var btn = e.target.querySelector('button[type="submit"]');
+        setBusy(btn, true, 'Checking…');
+        run('getOrderStatusForCustomer', fd.get('orderId'), fd.get('phone')).then(function (o) {
+          setBusy(btn, false);
+          $('#track-result', modal).innerHTML =
+            '<div class="pay-box"><div class="pay-row"><span>Status</span><span class="badge ' + (STATUS_CLASS[o.status] || '') + '">' + esc(o.status) + '</span></div>' +
+            '<div class="pay-row"><span>Bundle</span><b>' + esc(o.network) + ' ' + esc(o.size) + '</b></div>' +
+            '<div class="pay-row"><span>Amount</span><b>' + money(STATE.store.settings, o.amount) + '</b></div></div>';
+        }).catch(function (err) {
+          setBusy(btn, false);
+          $('#track-result', modal).innerHTML = '<div class="hint" style="color:var(--danger);">' + esc(err.message || err) + '</div>';
+        });
+      });
+    }
+
+    // ======================================================================
+    // ADMIN
+    // ======================================================================
+    function loadAdmin() {
+      run('getAdminBootstrap').then(function (data) {
+        STATE.admin = data;
+        if (!data.authorized) renderAdminLocked(); else renderAdminShell();
+      }).catch(function (err) { renderFatal(err); });
+    }
+
+    function refreshAdmin() {
+      return run('getAdminBootstrap').then(function (data) {
+        STATE.admin = data;
+        renderAdminShell();
+      });
+    }
+
+    function renderAdminLocked() {
+      var auth = STATE.admin.auth;
+      var app = $('#app');
+      var body =
+        '<div class="lock-emoji">🔒</div>' +
+        '<h2 style="margin:6px 0 4px;color:var(--navy);">Admin Portal</h2>';
+
+      if (!auth.email) {
+        body += '<p class="muted">We couldn\'t detect a Google account. Make sure you\'re signed into Google in this browser, then reload this page.</p>' +
+          '<button class="btn btn-navy btn-block" onclick="location.reload()">Reload</button>';
+      } else if (!auth.ownerClaimed) {
+        body += '<p class="muted">No one owns this store yet. Claim admin access while signed in as <b>' + esc(auth.email) + '</b> — this will be the only account that can manage pricing and orders.</p>' +
+          '<button class="btn btn-gold btn-block" id="claim-btn">Claim Admin Access</button>';
+      } else {
+        body += '<p class="muted">This admin portal is locked to its owner\'s Google account. You\'re signed in as <b>' + esc(auth.email) + '</b>, which isn\'t the owner. Sign in with the correct Google account and reload.</p>' +
+          '<button class="btn btn-outline btn-block" onclick="location.reload()">Reload</button>';
+      }
+      body += '<div style="margin-top:14px;"><a href="#" id="view-store-link" class="muted">← Back to store</a></div>';
+
+      app.innerHTML = '<div class="lock-screen"><div class="lock-card">' + body + '</div></div>';
+      var claimBtn = $('#claim-btn');
+      if (claimBtn) {
+        claimBtn.addEventListener('click', function () {
+          setBusy(claimBtn, true, 'Claiming…');
+          run('claimAdminAccess').then(function (res) {
+            if (res.success) { toast('Admin access claimed!', 'success'); loadAdmin(); }
+            else { setBusy(claimBtn, false); toast(res.message, 'error'); }
+          }).catch(function (err) { setBusy(claimBtn, false); toast(err.message || String(err), 'error'); });
+        });
+      }
+      $('#view-store-link').addEventListener('click', function (e) { e.preventDefault(); navigateTo('store'); });
+    }
+
+    var ADMIN_NAV = [
+      { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+      { id: 'orders', label: 'Orders', icon: '🧾' },
+      { id: 'pricing', label: 'Pricing', icon: '🏷️' },
+      { id: 'setup', label: 'Store Setup', icon: '🏬' },
+      { id: 'api', label: 'API Settings', icon: '🔌' }
+    ];
+
+    function renderAdminShell() {
+      var app = $('#app');
+      var sideLinks = ADMIN_NAV.map(function (item) {
+        return '<a href="#" class="side-link' + (STATE.adminTab === item.id ? ' active' : '') + '" data-tab="' + item.id + '">' + item.icon + ' ' + item.label + '</a>';
+      }).join('');
+
+      app.innerHTML =
+        '<div class="admin-body">' +
+          '<div class="side-scrim" id="scrim"></div>' +
+          '<div class="admin-side" id="admin-side">' +
+            '<div class="brand"><div class="logo">📶</div><div>' + esc(STATE.admin.settings.storeName) + '<small>Admin Portal</small></div></div>' +
+            sideLinks +
+            '<a href="#" class="side-link" id="view-store">🏠 View Store</a>' +
+            '<div class="side-foot">Signed in as<br><b style="color:#fff;">' + esc(STATE.admin.auth.email) + '</b></div>' +
+          '</div>' +
+          '<div class="admin-main">' +
+            '<div class="admin-topbar"><button class="icon-btn" id="menu-btn" style="background:var(--navy);color:#fff;">☰</button><b>' + labelFor(STATE.adminTab) + '</b><span></span></div>' +
+            '<div id="admin-content"></div>' +
+          '</div>' +
+        '</div>';
+
+      $$all('.side-link[data-tab]').forEach(function (a) {
+        a.addEventListener('click', function (e) {
+          e.preventDefault();
+          STATE.adminTab = a.dataset.tab;
+          closeSideNav();
+          renderAdminShell();
+        });
+      });
+      $('#view-store').addEventListener('click', function (e) { e.preventDefault(); navigateTo('store'); });
+      var menuBtn = $('#menu-btn');
+      if (menuBtn) menuBtn.addEventListener('click', function () {
+        $('#admin-side').classList.toggle('open');
+        $('#scrim').classList.toggle('open');
+      });
+      $('#scrim').addEventListener('click', closeSideNav);
+
+      renderAdminTabContent();
+    }
+
+    function closeSideNav() {
+      var side = $('#admin-side'); if (side) side.classList.remove('open');
+      var scrim = $('#scrim'); if (scrim) scrim.classList.remove('open');
+    }
+    function labelFor(id) { var f = ADMIN_NAV.filter(function (n) { return n.id === id; })[0]; return f ? f.label : ''; }
+
+    function renderAdminTabContent() {
+      var target = $('#admin-content');
+      if (STATE.adminTab === 'dashboard') return renderDashboardTab(target);
+      if (STATE.adminTab === 'orders') return renderOrdersTab(target);
+      if (STATE.adminTab === 'pricing') return renderPricingTab(target);
+      if (STATE.adminTab === 'setup') return renderSetupTab(target);
+      if (STATE.adminTab === 'api') return renderApiTab(target);
+    }
+
+    // ---------------- Dashboard ----------------
+    function renderDashboardTab(target) {
+      var stats = STATE.admin.stats;
+      var settings = STATE.admin.settings;
+      target.innerHTML =
+        '<div class="section-title">Store Performance</div>' +
+        '<p class="section-sub">Profit counts orders once payment is confirmed.</p>' +
+        '<div class="stat-grid">' +
+          statCard('stat-1', '💰', 'Total Sales', money(settings, stats.totalSales)) +
+          statCard('stat-2', '📈', 'Total Profit', money(settings, stats.totalProfit)) +
+          statCard('stat-3', '⏳', 'Pending Orders', stats.pendingCount) +
+          statCard('stat-4', '✅', 'Delivered', stats.deliveredCount) +
+        '</div>' +
+        '<div class="card">' +
+          '<div class="section-title" style="font-size:17px;">Recent Orders</div>' +
+          renderOrdersTable(STATE.admin.orders.slice(0, 6), settings, { compact: true }) +
+        '</div>';
+      wireOrderActions(target);
+    }
+    function statCard(cls, icon, label, value) {
+      return '<div class="stat-card ' + cls + '"><div class="stat-icon">' + icon + '</div><div class="stat-label">' + label + '</div><div class="stat-value">' + value + '</div></div>';
+    }
+
+    // ---------------- Orders ----------------
+    function renderOrdersTab(target) {
+      var settings = STATE.admin.settings;
+      var statuses = ['All'].concat(Object.keys(STATE.admin.orderStatuses).map(function (k) { return STATE.admin.orderStatuses[k]; }));
+      var filtered = STATE.orderFilter === 'All' ? STATE.admin.orders : STATE.admin.orders.filter(function (o) { return o.status === STATE.orderFilter; });
+
+      target.innerHTML =
+        '<div class="section-title">Orders</div>' +
+        '<p class="section-sub">Confirm MoMo payments, then fulfill via Geosam.</p>' +
+        '<div class="toolbar"><select id="status-filter">' +
+          statuses.map(function (s) { return '<option value="' + esc(s) + '"' + (s === STATE.orderFilter ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') +
+        '</select><span class="muted" style="font-size:13px;">' + filtered.length + ' order(s)</span></div>' +
+        '<div class="card" style="padding:0;overflow:hidden;">' + renderOrdersTable(filtered, settings, {}) + '</div>';
+
+      $('#status-filter').addEventListener('change', function (e) { STATE.orderFilter = e.target.value; renderOrdersTab(target); });
+      wireOrderActions(target);
+    }
+
+    function renderOrdersTable(orders, settings, opts) {
+      if (!orders.length) return '<div class="empty-state"><span class="big-emoji">🧾</span>No orders yet.</div>';
+      var rows = orders.map(function (o) {
+        var actions = '';
+        if (o.status === 'Pending Payment') actions += '<button class="btn btn-success btn-sm" data-action="paid" data-id="' + esc(o.id) + '">Mark Paid</button>';
+        if (o.status === 'Paid - Awaiting Fulfillment') actions += '<button class="btn btn-navy btn-sm" data-action="fulfill" data-id="' + esc(o.id) + '">Fulfill via Geosam</button>';
+        if (o.status === 'Processing') actions += '<button class="btn btn-success btn-sm" data-action="delivered" data-id="' + esc(o.id) + '">Mark Delivered</button>';
+        if (o.status !== 'Delivered' && o.status !== 'Cancelled' && o.status !== 'Failed') {
+          actions += '<button class="btn btn-danger btn-sm" data-action="cancel" data-id="' + esc(o.id) + '">Cancel</button>';
+        }
+        return '<tr>' +
+          '<td><b>' + esc(o.id) + '</b><br><span class="muted" style="font-size:11.5px;">' + fmtDate(o.timestamp) + '</span></td>' +
+          '<td>' + esc(o.customerName) + '<br><span class="muted" style="font-size:11.5px;">to ' + esc(o.recipientPhone) + '</span></td>' +
+          '<td>' + esc(o.network) + ' ' + esc(o.size) + '</td>' +
+          '<td>' + money(settings, o.sellingPrice) + '</td>' +
+          (opts.compact ? '' : '<td class="' + (o.profit >= 0 ? 'profit-pos' : 'profit-neg') + '">' + money(settings, o.profit) + '</td>') +
+          '<td><span class="badge ' + (STATUS_CLASS[o.status] || '') + '">' + esc(o.status) + '</span></td>' +
+          (opts.compact ? '' : '<td>' + esc(o.momoRef) + '</td>') +
+          '<td><div class="row-actions">' + actions + '</div></td>' +
+          '</tr>';
+      }).join('');
+
+      return '<div class="table-wrap"><table class="data-table"><thead><tr>' +
+        '<th>Order</th><th>Customer</th><th>Bundle</th><th>Price</th>' +
+        (opts.compact ? '' : '<th>Profit</th>') +
+        '<th>Status</th>' + (opts.compact ? '' : '<th>MoMo Ref</th>') + '<th>Actions</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    }
+
+    function fmtDate(d) {
+      try { return new Date(d).toLocaleString(); } catch (e) { return d; }
+    }
+
+    function wireOrderActions(target) {
+      $$all('button[data-action]', target).forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.dataset.id, action = btn.dataset.action;
+          var map = { paid: 'markOrderPaid', fulfill: 'fulfillOrder', delivered: 'markOrderDelivered', cancel: 'cancelOrder' };
+          if (action === 'cancel' && !confirm('Cancel order ' + id + '?')) return;
+          setBusy(btn, true, '…');
+          run(map[action], id).then(function () {
+            toast('Order ' + id + ' updated.', 'success');
+            refreshAdmin();
+          }).catch(function (err) {
+            setBusy(btn, false);
+            toast(err.message || String(err), 'error');
+          });
+        });
+      });
+    }
+
+    function $$all(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+
+    // ---------------- Pricing ----------------
+    function renderPricingTab(target) {
+      var settings = STATE.admin.settings;
+      var net = STATE.currentNetwork || STATE.admin.networks[0];
+      var pkgs = STATE.admin.packages.filter(function (p) { return p.network === net; });
+
+      target.innerHTML =
+        '<div class="section-title">Package Pricing</div>' +
+        '<p class="section-sub">Your selling price must be higher than the Geosam base price. Profit becomes available once an order is delivered.</p>' +
+        '<div class="toolbar">' +
+          '<select id="pricing-net">' + STATE.admin.networks.map(function (n) { return '<option value="' + n + '"' + (n === net ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select>' +
+          '<button class="btn btn-outline btn-sm" id="sync-btn">🔄 Sync from Geosam (' + (settings.geosamMode === 'live' ? 'Live' : 'Mock') + ')</button>' +
+          '<button class="btn btn-navy btn-sm" id="add-pkg-btn">+ Add package</button>' +
+        '</div>' +
+        '<div class="card" style="padding:0;overflow:hidden;">' + renderPricingTable(pkgs, settings) + '</div>' +
+        '<div id="add-pkg-form-holder"></div>';
+
+      $('#pricing-net').addEventListener('change', function (e) { STATE.currentNetwork = e.target.value; renderPricingTab(target); });
+      $('#sync-btn').addEventListener('click', function () {
+        var btn = $('#sync-btn');
+        setBusy(btn, true, 'Syncing…');
+        run('syncGeosamPackages', net).then(function () {
+          toast('Synced ' + net + ' packages from Geosam.', 'success');
+          refreshAdmin();
+        }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
+      });
+      $('#add-pkg-btn').addEventListener('click', function () { toggleAddPackageForm(net); });
+      wirePricingTable(target, settings);
+    }
+
+    function renderPricingTable(pkgs, settings) {
+      if (!pkgs.length) return '<div class="empty-state"><span class="big-emoji">🏷️</span>No packages yet for this network. Sync from Geosam or add one manually.</div>';
+      var rows = pkgs.map(function (p) {
+        return '<tr data-id="' + esc(p.id) + '">' +
+          '<td><b>' + esc(p.size) + '</b><br><span class="muted" style="font-size:11.5px;">' + esc(p.validity || '') + '</span></td>' +
+          '<td>' + money(settings, p.basePrice) + '</td>' +
+          '<td><input class="price-input" type="number" step="0.01" value="' + p.sellingPrice.toFixed(2) + '"></td>' +
+          '<td class="profit-cell ' + (p.profit >= 0 ? 'profit-pos' : 'profit-neg') + '">' + money(settings, p.profit) + '</td>' +
+          '<td><label class="switch"><input type="checkbox" data-active-toggle ' + (p.active ? 'checked' : '') + '> ' + (p.active ? 'Visible' : 'Hidden') + '</label></td>' +
+          '<td><div class="row-actions">' +
+            '<button class="btn btn-outline btn-sm" data-save>Save</button>' +
+            '<button class="btn btn-danger btn-sm" data-delete>Delete</button>' +
+          '</div></td>' +
+        '</tr>';
+      }).join('');
+      return '<div class="table-wrap"><table class="data-table"><thead><tr>' +
+        '<th>Size</th><th>Base Price</th><th>Your Selling Price</th><th>Profit</th><th>Visible</th><th>Actions</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    }
+
+    function wirePricingTable(target, settings) {
+      $$all('tr[data-id]', target).forEach(function (tr) {
+        var id = tr.dataset.id;
+        var priceInput = tr.querySelector('.price-input');
+        var profitCell = tr.querySelector('.profit-cell');
+        var basePrice = parseFloat(tr.children[1].textContent.replace(/[^\d.]/g, ''));
+
+        priceInput.addEventListener('input', function () {
+          var val = parseFloat(priceInput.value) || 0;
+          var profit = val - basePrice;
+          profitCell.textContent = money(settings, profit);
+          profitCell.className = 'profit-cell ' + (profit >= 0 ? 'profit-pos' : 'profit-neg');
+        });
+
+        tr.querySelector('[data-save]').addEventListener('click', function (e) {
+          var btn = e.target;
+          setBusy(btn, true, 'Saving…');
+          run('savePackageSellingPrice', id, priceInput.value).then(function () {
+            setBusy(btn, false);
+            toast('Price saved.', 'success');
+            refreshAdmin();
+          }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
+        });
+
+        tr.querySelector('[data-delete]').addEventListener('click', function () {
+          if (!confirm('Delete this package from your store?')) return;
+          run('deletePackage', id).then(function () { toast('Deleted.', 'success'); refreshAdmin(); })
+            .catch(function (err) { toast(err.message || String(err), 'error'); });
+        });
+
+        tr.querySelector('[data-active-toggle]').addEventListener('change', function (e) {
+          run('togglePackageActive', id, e.target.checked).then(function () {
+            toast('Updated.', 'success'); refreshAdmin();
+          }).catch(function (err) { toast(err.message || String(err), 'error'); refreshAdmin(); });
+        });
+      });
+    }
+
+    function toggleAddPackageForm(net) {
+      var holder = $('#add-pkg-form-holder');
+      if (holder.children.length) { holder.innerHTML = ''; return; }
+      holder.appendChild(el(
+        '<div class="card" style="margin-top:16px;">' +
+          '<div class="section-title" style="font-size:16px;">Add package manually</div>' +
+          '<form id="add-pkg-form">' +
+            '<div class="form-grid">' +
+              '<div class="field"><label>Network</label><select name="network">' + STATE.admin.networks.map(function (n) { return '<option' + (n === net ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div>' +
+              '<div class="field"><label>Size (e.g. 1GB)</label><input required name="size"></div>' +
+              '<div class="field"><label>Validity (e.g. 30 Days)</label><input name="validity" placeholder="30 Days"></div>' +
+              '<div class="field"><label>Geosam code (optional)</label><input name="geosamCode"></div>' +
+              '<div class="field"><label>Base price</label><input required type="number" step="0.01" name="basePrice"></div>' +
+              '<div class="field"><label>Your selling price</label><input required type="number" step="0.01" name="sellingPrice"></div>' +
+            '</div>' +
+            '<button class="btn btn-navy" type="submit">Add package</button>' +
+          '</form>' +
+        '</div>'
+      ));
+      holder.querySelector('#add-pkg-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var fd = new FormData(e.target);
+        var payload = {}; fd.forEach(function (v, k) { payload[k] = v; });
+        var btn = e.target.querySelector('button[type="submit"]');
+        setBusy(btn, true, 'Adding…');
+        run('addManualPackage', payload).then(function () {
+          toast('Package added.', 'success');
+          refreshAdmin();
+        }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
+      });
+    }
+
+    // ---------------- Store Setup ----------------
+    function renderSetupTab(target) {
+      var s = STATE.admin.settings;
+      target.innerHTML =
+        '<div class="section-title">My Store Details</div>' +
+        '<p class="section-sub">This is what customers see on your storefront.</p>' +
+        '<div class="card">' +
+          '<form id="setup-form">' +
+            '<div class="field"><label>Store name</label><input name="STORE_NAME" value="' + esc(s.storeName) + '"></div>' +
+            '<div class="field"><label>Tagline / description</label><textarea name="STORE_TAGLINE" rows="2">' + esc(s.tagline) + '</textarea></div>' +
+            '<div class="form-grid">' +
+              '<div class="field"><label>WhatsApp number</label><input name="WHATSAPP_NUMBER" value="' + esc(s.whatsapp) + '" placeholder="0244000000"></div>' +
+              '<div class="field"><label>Currency symbol</label><input name="CURRENCY_SYMBOL" value="' + esc(s.currency) + '"></div>' +
+              '<div class="field"><label>MoMo number (for payments)</label><input name="MOMO_NUMBER" value="' + esc(s.momoNumber) + '" placeholder="0244000000"></div>' +
+              '<div class="field"><label>Name on MoMo account</label><input name="MOMO_NAME" value="' + esc(s.momoName) + '"></div>' +
+            '</div>' +
+            '<button class="btn btn-navy" type="submit">Save changes</button>' +
+          '</form>' +
+        '</div>';
+      target.querySelector('#setup-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var fd = new FormData(e.target);
+        var payload = {}; fd.forEach(function (v, k) { payload[k] = v; });
+        var btn = e.target.querySelector('button[type="submit"]');
+        setBusy(btn, true, 'Saving…');
+        run('saveAdminSettings', payload).then(function () {
+          setBusy(btn, false);
+          toast('Store details saved.', 'success');
+          refreshAdmin();
+        }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
+      });
+    }
+
+    // ---------------- API Settings ----------------
+    function renderApiTab(target) {
+      var s = STATE.admin.settings;
+      target.innerHTML =
+        '<div class="section-title">Geosam API Settings</div>' +
+        '<p class="section-sub">While this is empty (or Mode is "Mock"), pricing uses sample data so you can set up your store first.</p>' +
+        '<div class="card">' +
+          '<form id="api-form">' +
+            '<div class="field"><label>API base URL</label><input name="GEOSAM_API_BASE" value="' + esc(s.geosamApiBase) + '" placeholder="https://api.geosam.example"></div>' +
+            '<div class="field"><label>API key ' + (s.geosamApiKeySet ? '<span class="muted">(currently set — leave blank to keep it)</span>' : '') + '</label><input type="password" name="GEOSAM_API_KEY" placeholder="' + (s.geosamApiKeySet ? '••••••••' : 'Paste your Geosam API key') + '"></div>' +
+            '<div class="field"><label>API mode</label><select name="GEOSAM_MODE">' +
+              '<option value="mock"' + (s.geosamMode !== 'live' ? ' selected' : '') + '>Mock (sample data)</option>' +
+              '<option value="live"' + (s.geosamMode === 'live' ? ' selected' : '') + '>Live (real Geosam API)</option>' +
+            '</select></div>' +
+            '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+              '<button class="btn btn-navy" type="submit">Save API settings</button>' +
+              '<button class="btn btn-outline" type="button" id="test-conn-btn">Test connection</button>' +
+            '</div>' +
+          '</form>' +
+          '<div id="test-result" style="margin-top:12px;"></div>' +
+        '</div>' +
+        '<div class="card" style="margin-top:16px;">' +
+          '<div class="section-title" style="font-size:16px;">Owner account</div>' +
+          '<p class="muted" style="font-size:13.5px;">This admin portal is locked to <b>' + esc(s.ownerEmail) + '</b>.</p>' +
+        '</div>';
+
+      target.querySelector('#api-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var fd = new FormData(e.target);
+        var payload = {}; fd.forEach(function (v, k) { payload[k] = v; });
+        var btn = e.target.querySelector('button[type="submit"]');
+        setBusy(btn, true, 'Saving…');
+        run('saveAdminSettings', payload).then(function () {
+          setBusy(btn, false);
+          toast('API settings saved.', 'success');
+          refreshAdmin();
+        }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
+      });
+      target.querySelector('#test-conn-btn').addEventListener('click', function () {
+        var btn = target.querySelector('#test-conn-btn');
+        setBusy(btn, true, 'Testing…');
+        run('testGeosamConnection').then(function (res) {
+          setBusy(btn, false);
+          $('#test-result', target).innerHTML = '<div class="hint" style="color:' + (res.success ? 'var(--success)' : 'var(--danger)') + ';">' + esc(res.message) + '</div>';
+        }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
+      });
+    }
+
+    // ======================================================================
+    function renderFatal(err) {
+      $('#app').innerHTML =
+        '<div class="lock-screen"><div class="lock-card">' +
+          '<div class="lock-emoji">⚠️</div><h2 style="color:var(--navy);">Something went wrong</h2>' +
+          '<p class="muted">' + esc(err && err.message ? err.message : String(err)) + '</p>' +
+          '<button class="btn btn-navy btn-block" onclick="location.reload()">Reload</button>' +
+        '</div></div>';
+    }
+
+    boot();
+  })();
+  </script>
+</body>
+</html>
