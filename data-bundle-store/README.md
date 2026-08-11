@@ -116,7 +116,26 @@ section to touch.
    toward your Dashboard totals once the order reaches Paid, Processing, or
    Delivered — never for orders still awaiting payment.
 
-## 7. Notes & guardrails already built in
+## 7. Live status banner
+
+In **Store Setup**, there's a "📢 Live Status Banner" card that controls a
+scrolling ticker shown at the top of your storefront (below the nav) — the
+same idea as Geosam's own "Network: Hi, the network is good today!" bar.
+
+- **Network status**: Good 🟢 / Delayed 🟡 / Down 🔴 — sets the banner's color
+  and a sensible default message.
+- **Per-network delivery time** (e.g. MTN defaults to "10-30 mins"): shown as
+  "MTN: 10-30 mins" etc. in the banner. Leave a network blank to leave it out
+  entirely.
+- **Custom message**: overrides the auto-generated status text if you want to
+  say something specific (e.g. "Telecel is down for maintenance until 6pm").
+- A live preview updates as you type, before you save. Toggle the banner off
+  entirely if you don't want it shown.
+
+The banner text is composed server-side in `composeBanner_()` in `Code.gs` —
+edit `BANNER_STATUS_DEFAULTS` there if you want different default wording.
+
+## 8. Notes & guardrails already built in
 
 - A selling price can never be saved at or below the current base price — the
   UI and the server both enforce it.
@@ -130,8 +149,14 @@ section to touch.
   repo's root `index.html` embeds another Apps Script project, if you want a
   custom domain via GitHub Pages.
 
-## 8. Customizing the look
+## 9. Customizing the look
 
 All styling lives in the `<style>` block at the top of `index.html` as CSS
 variables (`--navy`, `--gold`, `--mtn`, `--telecel`, `--at-1`/`--at-2`, etc.) —
 change those to re-theme the whole app without touching layout markup.
+
+Both the storefront and admin portal are mobile-responsive: the network
+tabs/package grid reflow, tables scroll horizontally instead of breaking the
+page, modals become bottom sheets, the admin sidebar collapses behind a ☰
+menu below ~820px, and form inputs use 16px font on small screens to stop
+iOS Safari's auto-zoom-on-focus.

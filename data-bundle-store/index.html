@@ -66,21 +66,28 @@
       display:flex;align-items:center;justify-content:space-between;
       box-shadow:var(--shadow);
     }
-    .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:.2px;}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:.2px;min-width:0;}
+    .brand > div{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     .brand .logo{
-      width:38px;height:38px;border-radius:11px;
+      width:38px;height:38px;border-radius:11px;flex-shrink:0;
       background:linear-gradient(145deg,var(--gold),var(--gold-2));
       display:flex;align-items:center;justify-content:center;font-size:19px;
       box-shadow:0 4px 12px rgba(255,184,0,.4);
     }
-    .brand small{display:block;font-weight:400;font-size:11px;color:#c8d4ea;letter-spacing:.4px;}
-    .nav-actions{display:flex;gap:10px;align-items:center;}
+    .brand small{display:block;font-weight:400;font-size:11px;color:#c8d4ea;letter-spacing:.4px;overflow:hidden;text-overflow:ellipsis;}
+    .nav-actions{display:flex;gap:10px;align-items:center;flex-shrink:0;}
     .icon-btn{
       background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);color:#fff;
       width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;
-      transition:.15s;
+      transition:.15s;flex-shrink:0;
     }
     .icon-btn:hover{background:rgba(255,255,255,.22);}
+    @media(max-width:400px){
+      .nav{padding:12px 14px;gap:10px;}
+      .brand{font-size:16px;gap:8px;}
+      .brand .logo{width:34px;height:34px;font-size:16px;}
+      .icon-btn{width:36px;height:36px;font-size:16px;}
+    }
 
     .btn{
       border:none;border-radius:12px;padding:12px 18px;font-weight:700;font-size:14.5px;
@@ -106,7 +113,9 @@
     .section-sub{color:var(--muted);font-size:14px;margin:0 0 18px;}
 
     /* ---------- Toasts ---------- */
-    #toast-stack{position:fixed;top:16px;right:16px;z-index:999;display:flex;flex-direction:column;gap:10px;max-width:340px;}
+    #toast-stack{position:fixed;top:16px;right:16px;z-index:999;display:flex;flex-direction:column;align-items:flex-end;gap:10px;max-width:340px;pointer-events:none;}
+    #toast-stack .toast{pointer-events:auto;max-width:100%;}
+    @media(max-width:400px){ #toast-stack{left:16px;max-width:none;} }
     .toast{
       background:var(--navy);color:#fff;padding:13px 16px;border-radius:12px;box-shadow:var(--shadow-lg);
       font-size:14px;animation:slideIn .25s ease;
@@ -114,6 +123,28 @@
     .toast.error{background:var(--danger);}
     .toast.success{background:var(--success);}
     @keyframes slideIn{from{opacity:0;transform:translateX(24px);}to{opacity:1;transform:translateX(0);}}
+
+    /* ---------- Store: live status banner (moving ticker) ---------- */
+    .status-banner{
+      overflow:hidden;white-space:nowrap;
+      padding:9px 0;font-size:13px;font-weight:700;color:#fff;
+    }
+    .status-banner.status-good{background:linear-gradient(90deg,#0fae7a,#12c98d);}
+    .status-banner.status-delayed{background:linear-gradient(90deg,#d97706,#f4a52a);}
+    .status-banner.status-down{background:linear-gradient(90deg,#c81e34,#e8394f);}
+    .status-banner .marquee-track{
+      display:inline-block;padding-left:100%;
+      animation:marquee 22s linear infinite;
+    }
+    .status-banner:hover .marquee-track{animation-play-state:paused;}
+    @keyframes marquee{
+      from{transform:translateX(0);}
+      to{transform:translateX(-100%);}
+    }
+    @media (prefers-reduced-motion: reduce){
+      .status-banner .marquee-track{animation:none;padding-left:16px;}
+      .status-banner{overflow-x:auto;}
+    }
 
     /* ---------- Store: hero ---------- */
     .hero{
@@ -130,6 +161,12 @@
       background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
       padding:8px 13px;border-radius:999px;font-size:12.5px;font-weight:600;
       display:flex;align-items:center;gap:6px;
+    }
+    @media(max-width:480px){
+      .hero{padding:28px 0 40px;}
+      .hero h1{font-size:23px;}
+      .hero p{font-size:13.5px;}
+      .trust-chip{font-size:11.5px;padding:7px 11px;}
     }
 
     /* ---------- Network tabs ---------- */
@@ -185,6 +222,10 @@
     }
     .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--navy-3);background:#fff;}
     .hint{font-size:12px;color:var(--muted);margin-top:5px;}
+    /* iOS Safari auto-zooms the page on focus if an input's font-size is under 16px. */
+    @media(max-width:640px){
+      .field input,.field select,.field textarea,.price-input{font-size:16px;}
+    }
 
     .pay-box{background:var(--warn-bg);border:1px solid #f7d9a6;border-radius:14px;padding:14px 16px;margin-bottom:16px;}
     .pay-box strong{color:#8a5a05;}
@@ -403,6 +444,7 @@
             '<button class="icon-btn" id="track-btn" title="Track my order">🔍</button>' +
           '</div>' +
         '</nav>' +
+        renderBannerHtml(s.banner) +
         '<div class="hero"><div class="container">' +
           '<h1>Buy data bundles in seconds</h1>' +
           '<p>' + esc(s.tagline) + '</p>' +
@@ -426,6 +468,16 @@
 
       $('#agent-login-link').addEventListener('click', function (e) { e.preventDefault(); navigateTo('admin'); });
       $('#track-btn').addEventListener('click', openTrackModal);
+    }
+
+    function renderBannerHtml(banner) {
+      if (!banner || !banner.enabled || !banner.text) return '';
+      var statusClass = 'status-' + (['good', 'delayed', 'down'].indexOf(banner.status) === -1 ? 'good' : banner.status);
+      // Duplicated once so the loop has no visible seam.
+      var text = esc(banner.text);
+      return '<div class="status-banner ' + statusClass + '"><span class="marquee-track">' +
+        text + '&nbsp;&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;&nbsp;' + text +
+        '&nbsp;&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;&nbsp;</span></div>';
     }
 
     function waNumber(n) {
@@ -931,6 +983,78 @@
         run('saveAdminSettings', payload).then(function () {
           setBusy(btn, false);
           toast('Store details saved.', 'success');
+          refreshAdmin();
+        }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
+      });
+
+      renderBannerForm(target, s);
+    }
+
+    var BANNER_STATUS_DEFAULTS = {
+      good: '🟢 Network is good — orders are going through smoothly!',
+      delayed: '🟡 Network is a bit slow right now — deliveries may take longer than usual.',
+      down: '🔴 Network issues right now — deliveries may be delayed. Sorry for the inconvenience!'
+    };
+
+    // Mirrors composeBanner_() in Code.gs, for an instant live preview while editing.
+    function composeBannerPreview(v) {
+      var status = BANNER_STATUS_DEFAULTS.hasOwnProperty(v.BANNER_STATUS) ? v.BANNER_STATUS : 'good';
+      var message = (v.BANNER_MESSAGE || '').trim() || BANNER_STATUS_DEFAULTS[status];
+      var etas = [];
+      if (v.MTN_DELIVERY_TIME) etas.push('MTN: ' + v.MTN_DELIVERY_TIME);
+      if (v.TELECEL_DELIVERY_TIME) etas.push('Telecel: ' + v.TELECEL_DELIVERY_TIME);
+      if (v.AIRTELTIGO_DELIVERY_TIME) etas.push('AirtelTigo: ' + v.AIRTELTIGO_DELIVERY_TIME);
+      return { status: status, text: message + (etas.length ? '  ·  Delivery time — ' + etas.join('  ·  ') : '') };
+    }
+
+    function renderBannerForm(target, s) {
+      var holder = el('<div class="card" style="margin-top:16px;"></div>');
+      holder.innerHTML =
+        '<div class="section-title" style="font-size:17px;">📢 Live Status Banner</div>' +
+        '<p class="section-sub">A scrolling banner on your storefront telling customers how the network is running and how long delivery is taking.</p>' +
+        '<div id="banner-preview" style="margin-bottom:16px;border-radius:12px;overflow:hidden;"></div>' +
+        '<form id="banner-form">' +
+          '<label class="switch" style="margin-bottom:14px;"><input type="checkbox" name="BANNER_ENABLED" value="true"' + (s.bannerEnabled ? ' checked' : '') + '> Show this banner on my storefront</label>' +
+          '<div class="form-grid">' +
+            '<div class="field"><label>Network status</label><select name="BANNER_STATUS">' +
+              '<option value="good"' + (s.bannerStatus === 'good' ? ' selected' : '') + '>🟢 Good</option>' +
+              '<option value="delayed"' + (s.bannerStatus === 'delayed' ? ' selected' : '') + '>🟡 Delayed / slow</option>' +
+              '<option value="down"' + (s.bannerStatus === 'down' ? ' selected' : '') + '>🔴 Down / major issues</option>' +
+            '</select></div>' +
+            '<div class="field"><label>MTN delivery time</label><input name="MTN_DELIVERY_TIME" value="' + esc(s.mtnDeliveryTime) + '" placeholder="e.g. 10-30 mins"></div>' +
+            '<div class="field"><label>Telecel delivery time</label><input name="TELECEL_DELIVERY_TIME" value="' + esc(s.telecelDeliveryTime) + '" placeholder="e.g. 15-45 mins"></div>' +
+            '<div class="field"><label>AirtelTigo delivery time</label><input name="AIRTELTIGO_DELIVERY_TIME" value="' + esc(s.airtelTigoDeliveryTime) + '" placeholder="e.g. 20-45 mins"></div>' +
+          '</div>' +
+          '<div class="field"><label>Custom message (optional)</label><textarea name="BANNER_MESSAGE" rows="2" placeholder="Leave blank to auto-generate from the status above">' + esc(s.bannerMessage) + '</textarea>' +
+            '<div class="hint">Leave a network\'s delivery time blank to leave it out of the banner.</div></div>' +
+          '<button class="btn btn-navy" type="submit">Save banner</button>' +
+        '</form>';
+      target.appendChild(holder);
+
+      function currentFormValues() {
+        var fd = new FormData(holder.querySelector('#banner-form'));
+        var v = {}; fd.forEach(function (val, key) { v[key] = val; });
+        return v;
+      }
+      function updatePreview() {
+        var preview = composeBannerPreview(currentFormValues());
+        holder.querySelector('#banner-preview').innerHTML =
+          '<div class="status-banner status-' + preview.status + '" style="overflow:visible;white-space:normal;padding:10px 14px;">' + esc(preview.text) + '</div>';
+      }
+      updatePreview();
+      ['input', 'change'].forEach(function (evt) {
+        holder.querySelector('#banner-form').addEventListener(evt, updatePreview);
+      });
+
+      holder.querySelector('#banner-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var payload = currentFormValues();
+        payload.BANNER_ENABLED = holder.querySelector('[name="BANNER_ENABLED"]').checked ? 'true' : 'false';
+        var btn = e.target.querySelector('button[type="submit"]');
+        setBusy(btn, true, 'Saving…');
+        run('saveAdminSettings', payload).then(function () {
+          setBusy(btn, false);
+          toast('Banner saved.', 'success');
           refreshAdmin();
         }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
       });

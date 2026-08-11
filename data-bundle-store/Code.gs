@@ -63,8 +63,37 @@ var DEFAULT_SETTINGS = {
   OWNER_EMAIL: '',
   GEOSAM_API_BASE: 'https://www.geosams.com',
   GEOSAM_API_KEY: '',
-  GEOSAM_MODE: 'mock' // 'mock' | 'live'
+  GEOSAM_MODE: 'mock', // 'mock' | 'live'
+
+  // Live status banner shown as a scrolling ticker on the storefront.
+  BANNER_ENABLED: 'true',
+  BANNER_STATUS: 'good',   // 'good' | 'delayed' | 'down'
+  BANNER_MESSAGE: '',      // custom text; blank = auto-generated from BANNER_STATUS
+  MTN_DELIVERY_TIME: '10-30 mins',
+  TELECEL_DELIVERY_TIME: '',
+  AIRTELTIGO_DELIVERY_TIME: ''
 };
+
+var BANNER_STATUS_DEFAULTS = {
+  good: '🟢 Network is good — orders are going through smoothly!',
+  delayed: '🟡 Network is a bit slow right now — deliveries may take longer than usual.',
+  down: '🔴 Network issues right now — deliveries may be delayed. Sorry for the inconvenience!'
+};
+
+/** Builds the final banner text + status shown on the storefront. */
+function composeBanner_(s) {
+  if (s.BANNER_ENABLED !== 'true') return { enabled: false };
+  var status = ['good', 'delayed', 'down'].indexOf(s.BANNER_STATUS) === -1 ? 'good' : s.BANNER_STATUS;
+  var message = (s.BANNER_MESSAGE || '').trim() || BANNER_STATUS_DEFAULTS[status];
+
+  var etas = [];
+  if (s.MTN_DELIVERY_TIME) etas.push('MTN: ' + s.MTN_DELIVERY_TIME);
+  if (s.TELECEL_DELIVERY_TIME) etas.push('Telecel: ' + s.TELECEL_DELIVERY_TIME);
+  if (s.AIRTELTIGO_DELIVERY_TIME) etas.push('AirtelTigo: ' + s.AIRTELTIGO_DELIVERY_TIME);
+
+  var text = message + (etas.length ? '  ·  Delivery time — ' + etas.join('  ·  ') : '');
+  return { enabled: true, status: status, text: text };
+}
 
 // ---------------------------------------------------------------------------
 // 2. WEB APP ENTRY POINT
@@ -206,6 +235,17 @@ function setSetting_(key, value) {
   PropertiesService.getScriptProperties().setProperty(key, value === undefined || value === null ? '' : String(value));
 }
 
+function getRawBannerSettings_() {
+  return {
+    BANNER_ENABLED: getSetting_('BANNER_ENABLED'),
+    BANNER_STATUS: getSetting_('BANNER_STATUS'),
+    BANNER_MESSAGE: getSetting_('BANNER_MESSAGE'),
+    MTN_DELIVERY_TIME: getSetting_('MTN_DELIVERY_TIME'),
+    TELECEL_DELIVERY_TIME: getSetting_('TELECEL_DELIVERY_TIME'),
+    AIRTELTIGO_DELIVERY_TIME: getSetting_('AIRTELTIGO_DELIVERY_TIME')
+  };
+}
+
 function getPublicSettings_() {
   return {
     storeName: getSetting_('STORE_NAME'),
@@ -213,13 +253,15 @@ function getPublicSettings_() {
     whatsapp: getSetting_('WHATSAPP_NUMBER'),
     momoNumber: getSetting_('MOMO_NUMBER'),
     momoName: getSetting_('MOMO_NAME'),
-    currency: getSetting_('CURRENCY_SYMBOL')
+    currency: getSetting_('CURRENCY_SYMBOL'),
+    banner: composeBanner_(getRawBannerSettings_())
   };
 }
 
 /** Client-callable (admin only). */
 function getAdminSettings() {
   requireOwner_();
+  var banner = getRawBannerSettings_();
   return {
     storeName: getSetting_('STORE_NAME'),
     tagline: getSetting_('STORE_TAGLINE'),
@@ -230,17 +272,33 @@ function getAdminSettings() {
     ownerEmail: getSetting_('OWNER_EMAIL'),
     geosamApiBase: getSetting_('GEOSAM_API_BASE'),
     geosamApiKeySet: !!getSetting_('GEOSAM_API_KEY'),
-    geosamMode: getSetting_('GEOSAM_MODE')
+    geosamMode: getSetting_('GEOSAM_MODE'),
+    bannerEnabled: banner.BANNER_ENABLED === 'true',
+    bannerStatus: banner.BANNER_STATUS || 'good',
+    bannerMessage: banner.BANNER_MESSAGE,
+    mtnDeliveryTime: banner.MTN_DELIVERY_TIME,
+    telecelDeliveryTime: banner.TELECEL_DELIVERY_TIME,
+    airtelTigoDeliveryTime: banner.AIRTELTIGO_DELIVERY_TIME,
+    bannerPreview: composeBanner_(banner)
   };
 }
 
 /** Client-callable (admin only). `settings` is a partial object of DEFAULT_SETTINGS keys. */
 function saveAdminSettings(settings) {
   requireOwner_();
-  var editable = ['STORE_NAME', 'STORE_TAGLINE', 'WHATSAPP_NUMBER', 'MOMO_NUMBER', 'MOMO_NAME', 'CURRENCY_SYMBOL', 'GEOSAM_API_BASE', 'GEOSAM_MODE'];
+  var editable = [
+    'STORE_NAME', 'STORE_TAGLINE', 'WHATSAPP_NUMBER', 'MOMO_NUMBER', 'MOMO_NAME', 'CURRENCY_SYMBOL',
+    'GEOSAM_API_BASE', 'GEOSAM_MODE',
+    'BANNER_ENABLED', 'BANNER_STATUS', 'BANNER_MESSAGE',
+    'MTN_DELIVERY_TIME', 'TELECEL_DELIVERY_TIME', 'AIRTELTIGO_DELIVERY_TIME'
+  ];
   editable.forEach(function (key) {
     if (settings.hasOwnProperty(key)) setSetting_(key, settings[key]);
   });
+  // Checkbox fields aren't submitted at all when unchecked, so treat a
+  // missing BANNER_ENABLED as explicitly "off" rather than leaving the
+  // previous value in place.
+  setSetting_('BANNER_ENABLED', settings.BANNER_ENABLED === 'true' ? 'true' : 'false');
   // API key only overwritten if a non-empty value was actually submitted,
   // so re-saving the settings form doesn't blank it out.
   if (settings.GEOSAM_API_KEY) setSetting_('GEOSAM_API_KEY', settings.GEOSAM_API_KEY);
