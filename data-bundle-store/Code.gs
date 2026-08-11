@@ -4,8 +4,12 @@
  * ============================================================================
  *  A self-serve storefront where customers buy MTN / Telecel / AirtelTigo
  *  data bundles, and a private admin portal (restricted to your Google
- *  account) where you sync base prices from Geosam, set your selling
- *  prices, and track profit.
+ *  account) where you set your own selling prices, fulfill orders through
+ *  Geosam's Send Bundle API, and track profit.
+ *
+ *  Note: Geosam's API has no endpoint to look up bundle sizes/prices — you
+ *  enter your own base prices manually (see the Pricing tab), matching what
+ *  you see in your Geosam dashboard/shop.
  *
  *  SETUP (see README.md for the full walkthrough):
  *   1. Create a new Google Sheet.
@@ -13,16 +17,15 @@
  *   3. Create this file as "Code.gs" and paste this content.
  *   4. Create an HTML file named "index" and paste index.html's content.
  *   5. Run `setupSheets` once from the editor (top toolbar ▶) to create
- *      the Packages / Orders tabs and seed mock pricing.
+ *      the Packages / Orders tabs and seed starter pricing.
  *   6. Deploy > New deployment > Web app.
  *        Execute as:  Me
  *        Who has access: Anyone
  *   7. Open the deployed URL, go to ?page=admin, and click
  *      "Claim Admin Access" while signed into the Google account you
  *      want to be the owner. This locks the admin portal to that account.
- *   8. In the admin Settings tab, fill in your MoMo details and (once you
- *      have them) your Geosam API base URL / key, then flip API Mode to
- *      "Live".
+ *   8. In the admin API Settings tab, paste your Geosam API token, flip
+ *      API Mode to "Live", and click "Test connection".
  * ============================================================================
  */
 
@@ -33,10 +36,13 @@
 var SHEET_PACKAGES = 'Packages';
 var SHEET_ORDERS = 'Orders';
 
-var PACKAGE_HEADERS = ['ID', 'Network', 'Size', 'Validity', 'BasePrice', 'SellingPrice', 'GeosamCode', 'Active', 'LastSynced'];
+var PACKAGE_HEADERS = ['ID', 'Network', 'Size', 'Validity', 'AmountMB', 'BasePrice', 'SellingPrice', 'Active', 'LastUpdated'];
 var ORDER_HEADERS = ['OrderID', 'Timestamp', 'CustomerName', 'RecipientPhone', 'PayerPhone', 'Network', 'Size', 'SellingPrice', 'BasePrice', 'Profit', 'MoMoRef', 'Status', 'GeosamOrderId', 'Notes', 'UpdatedAt'];
 
 var NETWORKS = ['MTN', 'Telecel', 'AirtelTigo'];
+
+// Geosam's API refers to AirtelTigo as "AT"; MTN and Telecel match our own names.
+var GEOSAM_NETWORK_CODE = { MTN: 'MTN', Telecel: 'Telecel', AirtelTigo: 'AT' };
 
 var ORDER_STATUS = {
   PENDING: 'Pending Payment',
@@ -55,7 +61,7 @@ var DEFAULT_SETTINGS = {
   MOMO_NAME: '',
   CURRENCY_SYMBOL: 'GH₵',
   OWNER_EMAIL: '',
-  GEOSAM_API_BASE: '',
+  GEOSAM_API_BASE: 'https://www.geosams.com',
   GEOSAM_API_KEY: '',
   GEOSAM_MODE: 'mock' // 'mock' | 'live'
 };
@@ -169,8 +175,8 @@ function sheetRowsToObjects_(sheet, headers) {
 
 /**
  * Run this once from the Apps Script editor (or via the spreadsheet menu)
- * to create the Packages / Orders sheets and seed sample pricing so the
- * store isn't empty before Geosam is connected.
+ * to create the Packages / Orders sheets and seed starter pricing so the
+ * store isn't empty on day one. Verify/adjust base prices before going live.
  */
 function setupSheets() {
   getSheet_(SHEET_PACKAGES, PACKAGE_HEADERS);
@@ -183,7 +189,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('📶 Data Bundle Store')
     .addItem('Initialize / repair sheets', 'setupSheets')
-    .addItem('Re-seed mock pricing (only if Packages is empty)', 'seedMockPackagesIfEmpty_')
+    .addItem('Re-seed starter pricing (only if Packages is empty)', 'seedMockPackagesIfEmpty_')
     .addToUi();
 }
 
@@ -285,12 +291,12 @@ function getAdminPackages() {
       network: p.Network,
       size: p.Size,
       validity: p.Validity,
+      amountMB: Number(p.AmountMB) || 0,
       basePrice: base,
       sellingPrice: selling,
       profit: selling - base,
-      geosamCode: p.GeosamCode,
       active: p.Active === true || p.Active === 'TRUE',
-      lastSynced: p.LastSynced
+      lastUpdated: p.LastUpdated
     };
   });
 }
@@ -333,11 +339,19 @@ function togglePackageActive(id, active) {
   return { success: true };
 }
 
-/** Client-callable (admin only). Manually add a package (used before Geosam sync is wired up, or for one-offs). */
+/**
+ * Client-callable (admin only). Adds a package to your store.
+ * Geosam's API has no endpoint to look up bundle prices or sizes — you set
+ * these based on what you see in your Geosam dashboard/shop. `amountMB` is
+ * the exact volume Geosam will send (e.g. 1000 for "1GB", 2000 for "2GB"),
+ * used directly in the Send Bundle API call.
+ */
 function addManualPackage(pkg) {
   requireOwner_();
   if (NETWORKS.indexOf(pkg.network) === -1) throw new Error('Unknown network.');
   if (!pkg.size) throw new Error('Size is required.');
+  var amountMB = Number(pkg.amountMB) || 0;
+  if (amountMB <= 0) throw new Error('Enter the data amount in MB (e.g. 1000 for 1GB) — this is sent to Geosam exactly as entered.');
   var basePrice = Number(pkg.basePrice) || 0;
   var sellingPrice = Number(pkg.sellingPrice) || 0;
   if (sellingPrice <= basePrice) throw new Error('Selling price must be higher than the base price.');
@@ -347,8 +361,7 @@ function addManualPackage(pkg) {
   if (findPackageRow_(sheet, id) !== -1) throw new Error('A package with that network + size already exists.');
 
   sheet.appendRow([
-    id, pkg.network, pkg.size, pkg.validity || '', basePrice, sellingPrice,
-    pkg.geosamCode || id, true, new Date()
+    id, pkg.network, pkg.size, pkg.validity || '', amountMB, basePrice, sellingPrice, true, new Date()
   ]);
   return { success: true, id: id };
 }
@@ -364,193 +377,179 @@ function deletePackage(id) {
 }
 
 /**
- * Client-callable (admin only). Pulls current base prices from Geosam
- * (or mock data, if API mode is "mock") and upserts them into the
- * Packages sheet. Existing selling prices are preserved; new packages
- * are added with selling price = base price + a starting markup so
- * the "selling > base" rule is never violated by a fresh sync.
+ * Geosam's API does not expose a bundle price list (it only sends bundles
+ * and reports status/balance — see the GEOSAM ADAPTER section below), so
+ * there is no "sync pricing from Geosam" feature. STARTER_PACKAGES below is
+ * just a template of common bundle sizes to seed your sheet with on first
+ * run, with base prices you MUST verify against your actual Geosam
+ * dashboard/shop pricing before going live — edit or delete rows in the
+ * Pricing tab (or the Packages sheet directly) as needed.
  */
-function syncGeosamPackages(network) {
-  requireOwner_();
-  if (NETWORKS.indexOf(network) === -1) throw new Error('Unknown network.');
-
-  var fetched = fetchGeosamPackages_(network); // [{code, size, validity, basePrice}]
-  var sheet = getSheet_(SHEET_PACKAGES, PACKAGE_HEADERS);
-  var lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
-    fetched.forEach(function (item) {
-      var id = packageId_(network, item.size);
-      var row = findPackageRow_(sheet, id);
-      var col = {
-        base: PACKAGE_HEADERS.indexOf('BasePrice') + 1,
-        selling: PACKAGE_HEADERS.indexOf('SellingPrice') + 1,
-        code: PACKAGE_HEADERS.indexOf('GeosamCode') + 1,
-        validity: PACKAGE_HEADERS.indexOf('Validity') + 1,
-        synced: PACKAGE_HEADERS.indexOf('LastSynced') + 1
-      };
-      if (row === -1) {
-        var startingSellingPrice = Math.ceil((item.basePrice * 1.15) * 100) / 100; // +15% starting markup
-        sheet.appendRow([id, network, item.size, item.validity || '', item.basePrice, startingSellingPrice, item.code, true, new Date()]);
-      } else {
-        sheet.getRange(row, col.base).setValue(item.basePrice);
-        sheet.getRange(row, col.code).setValue(item.code);
-        if (item.validity) sheet.getRange(row, col.validity).setValue(item.validity);
-        sheet.getRange(row, col.synced).setValue(new Date());
-      }
-    });
-  } finally {
-    lock.releaseLock();
-  }
-  return getAdminPackages().filter(function (p) { return p.network === network; });
-}
+var STARTER_PACKAGES = {
+  MTN: [
+    ['1GB', 1000, 4.15], ['2GB', 2000, 8.30], ['3GB', 3000, 12.45], ['4GB', 4000, 16.60], ['5GB', 5000, 20.75],
+    ['6GB', 6000, 24.90], ['8GB', 8000, 33.20], ['10GB', 10000, 41.50], ['15GB', 15000, 62.25], ['20GB', 20000, 83.00]
+  ],
+  Telecel: [
+    ['1GB', 1000, 4.50], ['2GB', 2000, 9.00], ['3GB', 3000, 13.00], ['5GB', 5000, 21.00], ['7GB', 7000, 28.50],
+    ['10GB', 10000, 40.00], ['15GB', 15000, 58.00], ['20GB', 20000, 75.00]
+  ],
+  AirtelTigo: [
+    ['1GB', 1000, 4.00], ['2GB', 2000, 7.80], ['3GB', 3000, 11.50], ['5GB', 5000, 19.00], ['10GB', 10000, 37.00],
+    ['15GB', 15000, 54.00], ['20GB', 20000, 70.00]
+  ]
+};
 
 function seedMockPackagesIfEmpty_() {
   var sheet = getSheet_(SHEET_PACKAGES, PACKAGE_HEADERS);
   if (sheet.getLastRow() >= 2) return 'Packages already has data — skipped.';
   NETWORKS.forEach(function (network) {
-    mockGeosamPackages_(network).forEach(function (item) {
-      var id = packageId_(network, item.size);
-      var sellingPrice = Math.ceil((item.basePrice * 1.15) * 100) / 100;
-      sheet.appendRow([id, network, item.size, item.validity, item.basePrice, sellingPrice, item.code, true, new Date()]);
+    (STARTER_PACKAGES[network] || []).forEach(function (row) {
+      var size = row[0], amountMB = row[1], basePrice = row[2];
+      var id = packageId_(network, size);
+      var sellingPrice = Math.ceil((basePrice * 1.15) * 100) / 100; // +15% starting markup
+      sheet.appendRow([id, network, size, '30 Days', amountMB, basePrice, sellingPrice, true, new Date()]);
     });
   });
-  return 'Seeded mock packages for ' + NETWORKS.join(', ') + '.';
+  return 'Seeded starter pricing for ' + NETWORKS.join(', ') + '. Verify base prices against your real Geosam pricing before going live.';
 }
 
 // ---------------------------------------------------------------------------
 // 7. GEOSAM ADAPTER
 // ---------------------------------------------------------------------------
-// This is intentionally isolated so it's the ONLY place you need to edit
-// once you have real Geosam API docs. Everything else in this file talks
-// to fetchGeosamPackages_() / buyGeosamBundle_() and doesn't care how they
-// get their data.
-//
-// TODO once you have Geosam's docs: fix GEOSAM_ENDPOINTS, the auth header
-// in geosamRequest_(), and the response-shape mapping in
-// fetchGeosamPackages_() / buyGeosamBundle_() below.
+// Based on Geosam's published API docs (https://geosams.com/controller/api-documentation/):
+//  - Auth header is "Authorization: Token <api_token>" (NOT "Bearer").
+//  - There is no endpoint to list bundle sizes/prices — Send Bundle just
+//    takes a network + phone number + a data amount in MB you already know.
+//    That's why base prices in the Pricing tab are entered manually.
+//  - Send Bundle is asynchronous: HTTP 200 + code "200" only means the
+//    request was accepted ("...is being processed"), not that it delivered.
+//    We move the order to "Processing" and you (or "Check Geosam Status")
+//    poll Transaction Detail to confirm it completed.
+//  - Geosam always replies HTTP 200, even for logical errors — the real
+//    result is in the JSON body's "code"/"message" fields, so we check
+//    those rather than the HTTP status for business logic.
 // ---------------------------------------------------------------------------
 
 var GEOSAM_ENDPOINTS = {
-  packages: '/api/packages', // TODO confirm actual path with Geosam docs
-  purchase: '/api/purchase'  // TODO confirm actual path with Geosam docs
+  sendBundle: '/controller/api/send_bundle/',
+  transactionDetail: '/controller/api/transaction_detail/', // + <reference>/
+  transactions: '/controller/api/transactions/',
+  accountStatus: '/controller/api/account/status/'
 };
 
 function geosamRequest_(path, method, payload) {
-  var base = getSetting_('GEOSAM_API_BASE');
+  var base = getSetting_('GEOSAM_API_BASE') || 'https://www.geosams.com';
   var key = getSetting_('GEOSAM_API_KEY');
-  if (!base || !key) {
-    throw new Error('Geosam API is not configured yet. Add your API base URL and key in Settings, or keep API Mode set to "Mock" while you test pricing.');
+  if (!key) {
+    throw new Error('Geosam API key is not set yet. Add it in API Settings, or keep API Mode set to "Mock" while you test the store.');
   }
   var options = {
     method: method || 'get',
     contentType: 'application/json',
-    headers: {
-      // TODO: Geosam may expect a different header, e.g. 'x-api-key': key
-      'Authorization': 'Bearer ' + key
-    },
+    headers: { 'Authorization': 'Token ' + key },
     muteHttpExceptions: true
   };
   if (payload) options.payload = JSON.stringify(payload);
 
   var response = UrlFetchApp.fetch(base.replace(/\/$/, '') + path, options);
-  var code = response.getResponseCode();
+  var httpCode = response.getResponseCode();
   var body = response.getContentText();
-  if (code < 200 || code >= 300) {
-    throw new Error('Geosam API error (' + code + '): ' + body);
+  var parsed = null;
+  try { parsed = JSON.parse(body); } catch (e) { /* leave null */ }
+
+  if (httpCode < 200 || httpCode >= 300) {
+    throw new Error('Geosam API error (HTTP ' + httpCode + '): ' + (parsed && parsed.message ? parsed.message : body));
   }
-  try {
-    return JSON.parse(body);
-  } catch (e) {
+  if (parsed === null) {
     throw new Error('Geosam API returned a non-JSON response: ' + body.substring(0, 200));
   }
+  return parsed;
 }
 
 /**
- * Returns [{ code, size, validity, basePrice }, ...] for a network.
- * In 'mock' mode returns illustrative sample pricing so you can build
- * your storefront and pricing workflow before Geosam is wired up.
- */
-function fetchGeosamPackages_(network) {
-  var mode = getSetting_('GEOSAM_MODE') || 'mock';
-  if (mode !== 'live') return mockGeosamPackages_(network);
-
-  var data = geosamRequest_(GEOSAM_ENDPOINTS.packages + '?network=' + encodeURIComponent(network), 'get');
-  // TODO: adjust this mapping once you know Geosam's real response shape.
-  var list = data.packages || data.data || data.results || [];
-  return list.map(function (p) {
-    return {
-      code: p.code || p.id || p.package_id,
-      size: p.size || p.name || p.bundle,
-      validity: p.validity || p.expiry || '30 Days',
-      basePrice: Number(p.price || p.amount || p.base_price)
-    };
-  });
-}
-
-/**
- * Places the actual purchase with Geosam once an order has been marked
- * Paid by the admin. Returns { success, geosamOrderId, message }.
- * In 'mock' mode, simulates success so the admin flow can be tested end
- * to end before the real API is connected.
+ * Places the actual bundle purchase with Geosam once an order has been
+ * marked Paid by the admin. `order` needs Network, RecipientPhone,
+ * AmountMB, and a Reference (unique per attempt — see fulfillOrder()).
+ * Returns { success, status, geosamRef, message }.
+ * In 'mock' mode, simulates acceptance so the admin flow can be tested
+ * end to end before the real API is connected.
  */
 function buyGeosamBundle_(order) {
   var mode = getSetting_('GEOSAM_MODE') || 'mock';
   if (mode !== 'live') {
     return {
       success: true,
-      geosamOrderId: 'MOCK-' + Utilities.getUuid().split('-')[0].toUpperCase(),
-      message: 'Simulated fulfillment (Geosam API Mode is set to Mock).'
+      status: 'Processing',
+      geosamRef: order.Reference,
+      message: 'Simulated: bundle request accepted (Geosam API Mode is set to Mock).'
     };
   }
-  // TODO: adjust payload field names once you know Geosam's real request shape.
-  var res = geosamRequest_(GEOSAM_ENDPOINTS.purchase, 'post', {
-    network: order.Network,
-    package_code: order.GeosamCode,
-    recipient_phone: order.RecipientPhone
+
+  var networkCode = GEOSAM_NETWORK_CODE[order.Network] || order.Network;
+  var res = geosamRequest_(GEOSAM_ENDPOINTS.sendBundle, 'post', {
+    phone_number: order.RecipientPhone,
+    amount: Number(order.AmountMB),
+    reference: order.Reference,
+    network: networkCode
   });
-  return {
-    success: true,
-    geosamOrderId: res.orderId || res.id || res.reference || '',
-    message: res.message || 'Submitted to Geosam.'
-  };
+
+  if (String(res.code) === '200') {
+    return { success: true, status: 'Processing', geosamRef: order.Reference, message: res.message || 'Bundle request received and is being processed.' };
+  }
+  return { success: false, status: 'Failed', geosamRef: order.Reference, message: res.message || 'Geosam rejected the request.' };
 }
 
-function mockGeosamPackages_(network) {
-  var tables = {
-    MTN: [
-      ['1GB', 4.15], ['2GB', 8.30], ['3GB', 12.45], ['4GB', 16.60], ['5GB', 20.75],
-      ['6GB', 24.90], ['8GB', 33.20], ['10GB', 41.50], ['15GB', 62.25], ['20GB', 83.00],
-      ['25GB', 103.75], ['30GB', 124.50]
-    ],
-    Telecel: [
-      ['1GB', 4.50], ['2GB', 9.00], ['3GB', 13.00], ['5GB', 21.00], ['7GB', 28.50],
-      ['10GB', 40.00], ['15GB', 58.00], ['20GB', 75.00], ['25GB', 92.00], ['50GB', 175.00]
-    ],
-    AirtelTigo: [
-      ['1GB', 4.00], ['2GB', 7.80], ['3GB', 11.50], ['5GB', 19.00], ['10GB', 37.00],
-      ['15GB', 54.00], ['20GB', 70.00], ['25GB', 87.00], ['50GB', 165.00]
-    ]
-  };
-  var rows = tables[network] || [];
-  return rows.map(function (row) {
-    return { code: packageId_(network, row[0]), size: row[0], validity: '30 Days', basePrice: row[1] };
-  });
+/**
+ * Polls Geosam for the current status of a previously-submitted bundle
+ * request. In 'mock' mode, simulates immediate completion.
+ * Returns Geosam's raw transaction object: { status, message, ... }.
+ */
+function checkGeosamTransactionStatus_(reference) {
+  var mode = getSetting_('GEOSAM_MODE') || 'mock';
+  if (mode !== 'live') {
+    return { status: 'Completed', message: 'Simulated: bundle delivered (Mock mode).' };
+  }
+  return geosamRequest_(GEOSAM_ENDPOINTS.transactionDetail + encodeURIComponent(reference) + '/', 'get');
 }
 
-/** Client-callable (admin only). "Test Connection" button in Settings. */
+/** Client-callable (admin only). Shows current Geosam wallet balances per network. */
+function getGeosamWalletBalance() {
+  requireOwner_();
+  var mode = getSetting_('GEOSAM_MODE') || 'mock';
+  if (mode !== 'live') {
+    return { success: false, message: 'API Mode is set to Mock — switch to Live to check your real Geosam wallet balance.' };
+  }
+  try {
+    var res = geosamRequest_(GEOSAM_ENDPOINTS.accountStatus, 'get');
+    return {
+      success: true,
+      isActive: !!res.is_account_active,
+      user: res.user,
+      balances: {
+        MTN: (res.balances && res.balances.mtn_bundle_balance) || '0',
+        Telecel: (res.balances && res.balances.telecel_bundle_balance) || '0',
+        AirtelTigo: (res.balances && res.balances.at_bundle_balance) || '0'
+      }
+    };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+/** Client-callable (admin only). "Test Connection" button in API Settings — a safe, read-only check. */
 function testGeosamConnection() {
   requireOwner_();
   var mode = getSetting_('GEOSAM_MODE') || 'mock';
   if (mode !== 'live') {
     return { success: false, message: 'API Mode is set to Mock — switch to Live to test the real Geosam connection.' };
   }
-  try {
-    var result = fetchGeosamPackages_('MTN');
-    return { success: true, message: 'Connected. Received ' + result.length + ' MTN package(s) from Geosam.' };
-  } catch (err) {
-    return { success: false, message: err.message };
+  var result = getGeosamWalletBalance();
+  if (!result.success) return result;
+  if (!result.isActive) {
+    return { success: false, message: 'Connected, but your Geosam API account is not approved/active yet (signed in as ' + result.user + ').' };
   }
+  return { success: true, message: 'Connected as ' + result.user + '. Balances — MTN: ' + result.balances.MTN + ', Telecel: ' + result.balances.Telecel + ', AirtelTigo: ' + result.balances.AirtelTigo + '.' };
 }
 
 // ---------------------------------------------------------------------------
@@ -717,7 +716,13 @@ function markOrderPaid(orderId) {
   return { success: true };
 }
 
-/** Client-callable (admin only). Sends the order to Geosam for fulfillment. */
+/**
+ * Client-callable (admin only). Sends the order to Geosam for fulfillment.
+ * Success only means Geosam accepted the request (it's async) — the order
+ * moves to "Processing" and you use checkOrderGeosamStatus() to confirm
+ * delivery. A fresh reference is generated on every attempt so retrying a
+ * failed order never collides with a previous Geosam reference.
+ */
 function fulfillOrder(orderId) {
   requireOwner_();
   var sheet = getSheet_(SHEET_ORDERS, ORDER_HEADERS);
@@ -728,19 +733,55 @@ function fulfillOrder(orderId) {
   var order = {};
   ORDER_HEADERS.forEach(function (h, i) { order[h] = values[i]; });
 
-  var packages = getAllPackages_();
-  var pkg = packages.filter(function (p) { return p.Network === order.Network && p.Size === order.Size; })[0];
-  order.GeosamCode = pkg ? pkg.GeosamCode : '';
+  var pkg = getAllPackages_().filter(function (p) { return p.Network === order.Network && p.Size === order.Size; })[0];
+  if (!pkg || !(Number(pkg.AmountMB) > 0)) {
+    throw new Error('No matching package with a data amount (MB) found for ' + order.Network + ' ' + order.Size + '. Check the Pricing tab.');
+  }
+  order.AmountMB = pkg.AmountMB;
+  order.Reference = orderId + '-F' + Utilities.getUuid().split('-')[0].toUpperCase();
 
-  setOrderStatus_(orderId, ORDER_STATUS.PROCESSING);
   var result = buyGeosamBundle_(order);
 
   if (result.success) {
-    setOrderStatus_(orderId, ORDER_STATUS.DELIVERED, { geosamOrderId: result.geosamOrderId, notes: result.message });
+    setOrderStatus_(orderId, ORDER_STATUS.PROCESSING, { geosamOrderId: result.geosamRef, notes: result.message });
   } else {
-    setOrderStatus_(orderId, ORDER_STATUS.FAILED, { notes: result.message });
+    setOrderStatus_(orderId, ORDER_STATUS.FAILED, { geosamOrderId: result.geosamRef, notes: result.message });
   }
   return result;
+}
+
+/**
+ * Client-callable (admin only). Polls Geosam for an order that's been sent
+ * (status "Processing") and updates it to Delivered/Failed based on the
+ * real transaction status. Safe to click more than once.
+ */
+function checkOrderGeosamStatus(orderId) {
+  requireOwner_();
+  var sheet = getSheet_(SHEET_ORDERS, ORDER_HEADERS);
+  var row = findOrderRow_(sheet, orderId);
+  if (row === -1) throw new Error('Order not found.');
+
+  var values = sheet.getRange(row, 1, 1, ORDER_HEADERS.length).getValues()[0];
+  var order = {};
+  ORDER_HEADERS.forEach(function (h, i) { order[h] = values[i]; });
+
+  if (!order.GeosamOrderId) {
+    throw new Error('This order has not been submitted to Geosam yet.');
+  }
+
+  var tx = checkGeosamTransactionStatus_(order.GeosamOrderId);
+  var status = String(tx.status || '').toLowerCase();
+
+  if (status === 'completed') {
+    setOrderStatus_(orderId, ORDER_STATUS.DELIVERED, { notes: tx.message || 'Confirmed delivered by Geosam.' });
+    return { status: ORDER_STATUS.DELIVERED, message: tx.message };
+  }
+  if (status === 'failed' || status === 'error') {
+    setOrderStatus_(orderId, ORDER_STATUS.FAILED, { notes: tx.message || 'Geosam reported this transaction failed.' });
+    return { status: ORDER_STATUS.FAILED, message: tx.message };
+  }
+  setOrderStatus_(orderId, ORDER_STATUS.PROCESSING, { notes: tx.message || ('Geosam status: ' + (tx.status || 'pending')) });
+  return { status: ORDER_STATUS.PROCESSING, message: tx.message || 'Still processing at Geosam — check again shortly.' };
 }
 
 /** Client-callable (admin only). */

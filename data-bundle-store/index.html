@@ -733,7 +733,10 @@
         var actions = '';
         if (o.status === 'Pending Payment') actions += '<button class="btn btn-success btn-sm" data-action="paid" data-id="' + esc(o.id) + '">Mark Paid</button>';
         if (o.status === 'Paid - Awaiting Fulfillment') actions += '<button class="btn btn-navy btn-sm" data-action="fulfill" data-id="' + esc(o.id) + '">Fulfill via Geosam</button>';
-        if (o.status === 'Processing') actions += '<button class="btn btn-success btn-sm" data-action="delivered" data-id="' + esc(o.id) + '">Mark Delivered</button>';
+        if (o.status === 'Processing') {
+          actions += '<button class="btn btn-navy btn-sm" data-action="checkstatus" data-id="' + esc(o.id) + '">🔄 Check Geosam Status</button>';
+          actions += '<button class="btn btn-success btn-sm" data-action="delivered" data-id="' + esc(o.id) + '">Mark Delivered</button>';
+        }
         if (o.status !== 'Delivered' && o.status !== 'Cancelled' && o.status !== 'Failed') {
           actions += '<button class="btn btn-danger btn-sm" data-action="cancel" data-id="' + esc(o.id) + '">Cancel</button>';
         }
@@ -764,11 +767,12 @@
       $$all('button[data-action]', target).forEach(function (btn) {
         btn.addEventListener('click', function () {
           var id = btn.dataset.id, action = btn.dataset.action;
-          var map = { paid: 'markOrderPaid', fulfill: 'fulfillOrder', delivered: 'markOrderDelivered', cancel: 'cancelOrder' };
+          var map = { paid: 'markOrderPaid', fulfill: 'fulfillOrder', checkstatus: 'checkOrderGeosamStatus', delivered: 'markOrderDelivered', cancel: 'cancelOrder' };
           if (action === 'cancel' && !confirm('Cancel order ' + id + '?')) return;
           setBusy(btn, true, '…');
-          run(map[action], id).then(function () {
-            toast('Order ' + id + ' updated.', 'success');
+          run(map[action], id).then(function (res) {
+            var msg = (res && res.status) ? ('Order ' + id + ' is now: ' + res.status) : ('Order ' + id + ' updated.');
+            toast(msg, 'success');
             refreshAdmin();
           }).catch(function (err) {
             setBusy(btn, false);
@@ -788,30 +792,21 @@
 
       target.innerHTML =
         '<div class="section-title">Package Pricing</div>' +
-        '<p class="section-sub">Your selling price must be higher than the Geosam base price. Profit becomes available once an order is delivered.</p>' +
+        '<p class="section-sub">Geosam doesn\'t provide a live price list — set base prices to match your Geosam dashboard/shop. Your selling price must be higher than the base price. Profit becomes available once an order is delivered.</p>' +
         '<div class="toolbar">' +
           '<select id="pricing-net">' + STATE.admin.networks.map(function (n) { return '<option value="' + n + '"' + (n === net ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select>' +
-          '<button class="btn btn-outline btn-sm" id="sync-btn">🔄 Sync from Geosam (' + (settings.geosamMode === 'live' ? 'Live' : 'Mock') + ')</button>' +
           '<button class="btn btn-navy btn-sm" id="add-pkg-btn">+ Add package</button>' +
         '</div>' +
         '<div class="card" style="padding:0;overflow:hidden;">' + renderPricingTable(pkgs, settings) + '</div>' +
         '<div id="add-pkg-form-holder"></div>';
 
       $('#pricing-net').addEventListener('change', function (e) { STATE.currentNetwork = e.target.value; renderPricingTab(target); });
-      $('#sync-btn').addEventListener('click', function () {
-        var btn = $('#sync-btn');
-        setBusy(btn, true, 'Syncing…');
-        run('syncGeosamPackages', net).then(function () {
-          toast('Synced ' + net + ' packages from Geosam.', 'success');
-          refreshAdmin();
-        }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
-      });
       $('#add-pkg-btn').addEventListener('click', function () { toggleAddPackageForm(net); });
       wirePricingTable(target, settings);
     }
 
     function renderPricingTable(pkgs, settings) {
-      if (!pkgs.length) return '<div class="empty-state"><span class="big-emoji">🏷️</span>No packages yet for this network. Sync from Geosam or add one manually.</div>';
+      if (!pkgs.length) return '<div class="empty-state"><span class="big-emoji">🏷️</span>No packages yet for this network. Click "+ Add package" to create one.</div>';
       var rows = pkgs.map(function (p) {
         return '<tr data-id="' + esc(p.id) + '">' +
           '<td><b>' + esc(p.size) + '</b><br><span class="muted" style="font-size:11.5px;">' + esc(p.validity || '') + '</span></td>' +
@@ -877,9 +872,9 @@
           '<form id="add-pkg-form">' +
             '<div class="form-grid">' +
               '<div class="field"><label>Network</label><select name="network">' + STATE.admin.networks.map(function (n) { return '<option' + (n === net ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div>' +
-              '<div class="field"><label>Size (e.g. 1GB)</label><input required name="size"></div>' +
+              '<div class="field"><label>Size (e.g. 1GB)</label><input required name="size" id="pkg-size-input"></div>' +
+              '<div class="field"><label>Data amount in MB (sent to Geosam)</label><input required type="number" step="1" name="amountMB" id="pkg-mb-input" placeholder="1000 = 1GB"></div>' +
               '<div class="field"><label>Validity (e.g. 30 Days)</label><input name="validity" placeholder="30 Days"></div>' +
-              '<div class="field"><label>Geosam code (optional)</label><input name="geosamCode"></div>' +
               '<div class="field"><label>Base price</label><input required type="number" step="0.01" name="basePrice"></div>' +
               '<div class="field"><label>Your selling price</label><input required type="number" step="0.01" name="sellingPrice"></div>' +
             '</div>' +
@@ -887,6 +882,14 @@
           '</form>' +
         '</div>'
       ));
+      holder.querySelector('#pkg-size-input').addEventListener('blur', function (e) {
+        var mbInput = holder.querySelector('#pkg-mb-input');
+        if (mbInput.value) return;
+        var match = /([\d.]+)\s*(GB|MB)/i.exec(e.target.value || '');
+        if (!match) return;
+        var n = parseFloat(match[1]);
+        mbInput.value = /gb/i.test(match[2]) ? Math.round(n * 1000) : Math.round(n);
+      });
       holder.querySelector('#add-pkg-form').addEventListener('submit', function (e) {
         e.preventDefault();
         var fd = new FormData(e.target);
@@ -938,21 +941,23 @@
       var s = STATE.admin.settings;
       target.innerHTML =
         '<div class="section-title">Geosam API Settings</div>' +
-        '<p class="section-sub">While this is empty (or Mode is "Mock"), pricing uses sample data so you can set up your store first.</p>' +
+        '<p class="section-sub">While Mode is "Mock", orders are simulated so you can test the whole flow before going live. Geosam has no bundle price-list endpoint, so pricing always stays manual (see the Pricing tab).</p>' +
         '<div class="card">' +
           '<form id="api-form">' +
-            '<div class="field"><label>API base URL</label><input name="GEOSAM_API_BASE" value="' + esc(s.geosamApiBase) + '" placeholder="https://api.geosam.example"></div>' +
-            '<div class="field"><label>API key ' + (s.geosamApiKeySet ? '<span class="muted">(currently set — leave blank to keep it)</span>' : '') + '</label><input type="password" name="GEOSAM_API_KEY" placeholder="' + (s.geosamApiKeySet ? '••••••••' : 'Paste your Geosam API key') + '"></div>' +
+            '<div class="field"><label>API base URL</label><input name="GEOSAM_API_BASE" value="' + esc(s.geosamApiBase) + '" placeholder="https://www.geosams.com"></div>' +
+            '<div class="field"><label>API token ' + (s.geosamApiKeySet ? '<span class="muted">(currently set — leave blank to keep it)</span>' : '') + '</label><input type="password" name="GEOSAM_API_KEY" placeholder="' + (s.geosamApiKeySet ? '••••••••' : 'Paste your Geosam API token') + '"><div class="hint">From your Geosam dashboard, once your API account is approved.</div></div>' +
             '<div class="field"><label>API mode</label><select name="GEOSAM_MODE">' +
-              '<option value="mock"' + (s.geosamMode !== 'live' ? ' selected' : '') + '>Mock (sample data)</option>' +
+              '<option value="mock"' + (s.geosamMode !== 'live' ? ' selected' : '') + '>Mock (simulate orders)</option>' +
               '<option value="live"' + (s.geosamMode === 'live' ? ' selected' : '') + '>Live (real Geosam API)</option>' +
             '</select></div>' +
             '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
               '<button class="btn btn-navy" type="submit">Save API settings</button>' +
               '<button class="btn btn-outline" type="button" id="test-conn-btn">Test connection</button>' +
+              '<button class="btn btn-outline" type="button" id="balance-btn">💰 Check wallet balance</button>' +
             '</div>' +
           '</form>' +
           '<div id="test-result" style="margin-top:12px;"></div>' +
+          '<div id="balance-result" style="margin-top:12px;"></div>' +
         '</div>' +
         '<div class="card" style="margin-top:16px;">' +
           '<div class="section-title" style="font-size:16px;">Owner account</div>' +
@@ -977,6 +982,22 @@
         run('testGeosamConnection').then(function (res) {
           setBusy(btn, false);
           $('#test-result', target).innerHTML = '<div class="hint" style="color:' + (res.success ? 'var(--success)' : 'var(--danger)') + ';">' + esc(res.message) + '</div>';
+        }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
+      });
+      target.querySelector('#balance-btn').addEventListener('click', function () {
+        var btn = target.querySelector('#balance-btn');
+        setBusy(btn, true, 'Checking…');
+        run('getGeosamWalletBalance').then(function (res) {
+          setBusy(btn, false);
+          if (!res.success) {
+            $('#balance-result', target).innerHTML = '<div class="hint" style="color:var(--danger);">' + esc(res.message) + '</div>';
+            return;
+          }
+          $('#balance-result', target).innerHTML =
+            '<div class="pay-box"><strong>Geosam wallet balance</strong>' +
+            '<div class="pay-row"><span>MTN</span><b>' + esc(res.balances.MTN) + '</b></div>' +
+            '<div class="pay-row"><span>Telecel</span><b>' + esc(res.balances.Telecel) + '</b></div>' +
+            '<div class="pay-row"><span>AirtelTigo</span><b>' + esc(res.balances.AirtelTigo) + '</b></div></div>';
         }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
       });
     }
