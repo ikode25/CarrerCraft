@@ -3,9 +3,10 @@
  *  DATA BUNDLE STORE — Google Apps Script backend
  * ============================================================================
  *  A self-serve storefront where customers buy MTN / Telecel / AirtelTigo
- *  data bundles, and a private admin portal (restricted to your Google
- *  account) where you set your own selling prices, fulfill orders through
- *  Geosam's Send Bundle API, and track profit.
+ *  data bundles, and a private admin portal (username + password login,
+ *  default admin / admin123 — change it immediately) where you set your own
+ *  selling prices, fulfill orders through Geosam's Send Bundle API, and
+ *  track profit.
  *
  *  Note: Geosam's API has no endpoint to look up bundle sizes/prices — you
  *  enter your own base prices manually (see the Pricing tab), matching what
@@ -17,13 +18,13 @@
  *   3. Create this file as "Code.gs" and paste this content.
  *   4. Create an HTML file named "index" and paste index.html's content.
  *   5. Run `setupSheets` once from the editor (top toolbar ▶) to create
- *      the Packages / Orders tabs and seed starter pricing.
+ *      the Packages / Orders tabs, seed starter pricing, and set up the
+ *      default admin login (admin / admin123).
  *   6. Deploy > New deployment > Web app.
  *        Execute as:  Me
  *        Who has access: Anyone
- *   7. Open the deployed URL, go to ?page=admin, and click
- *      "Claim Admin Access" while signed into the Google account you
- *      want to be the owner. This locks the admin portal to that account.
+ *   7. Open the deployed URL, go to ?page=admin, and log in with
+ *      admin / admin123. Go straight to the Account tab and change both.
  *   8. In the admin API Settings tab, paste your Geosam API token, flip
  *      API Mode to "Live", and click "Test connection".
  * ============================================================================
@@ -60,7 +61,6 @@ var DEFAULT_SETTINGS = {
   MOMO_NUMBER: '',
   MOMO_NAME: '',
   CURRENCY_SYMBOL: 'GH₵',
-  OWNER_EMAIL: '',
   GEOSAM_API_BASE: 'https://www.geosams.com',
   GEOSAM_API_KEY: '',
   GEOSAM_MODE: 'mock', // 'mock' | 'live'
@@ -71,13 +71,18 @@ var DEFAULT_SETTINGS = {
   BANNER_MESSAGE: '',      // custom text; blank = auto-generated from BANNER_STATUS
   MTN_DELIVERY_TIME: '10-30 mins',
   TELECEL_DELIVERY_TIME: '',
-  AIRTELTIGO_DELIVERY_TIME: ''
+  AIRTELTIGO_DELIVERY_TIME: '',
+
+  // System color — the rest of the palette (hover/dark shades) is derived
+  // from these two on the client, so the admin only picks two colors.
+  THEME_PRIMARY: '#0f2747',
+  THEME_ACCENT: '#ffc93c'
 };
 
 var BANNER_STATUS_DEFAULTS = {
-  good: '🟢 Network is good — orders are going through smoothly!',
-  delayed: '🟡 Network is a bit slow right now — deliveries may take longer than usual.',
-  down: '🔴 Network issues right now — deliveries may be delayed. Sorry for the inconvenience!'
+  good: 'Network is good — orders are going through smoothly!',
+  delayed: 'Network is a bit slow right now — deliveries may take longer than usual.',
+  down: 'Network issues right now — deliveries may be delayed. Sorry for the inconvenience!'
 };
 
 /** Builds the final banner text + status shown on the storefront. */
@@ -118,57 +123,93 @@ function include(filename) {
 // ---------------------------------------------------------------------------
 // 3. AUTH HELPERS
 // ---------------------------------------------------------------------------
+// Admin login is a classic username + password form (not tied to a Google
+// account), so the admin portal works the same for anyone with the
+// credentials, in any browser. Default credentials are admin / admin123 —
+// change them immediately from the admin Account tab.
+//
+// Sessions are opaque tokens the client stores (localStorage) and sends
+// back as the first argument to every admin-only function. Tokens live in
+// CacheService (sliding 6-hour expiry, renewed on each authenticated call).
+// ---------------------------------------------------------------------------
 
-function getCurrentUserEmail_() {
-  try {
-    return (Session.getActiveUser().getEmail() || '').toLowerCase();
-  } catch (err) {
-    return '';
+var SESSION_TTL_SECONDS = 21600; // 6 hours — CacheService's own maximum
+
+function ensureAdminCredentials_() {
+  if (getSetting_('ADMIN_USERNAME') && getSetting_('ADMIN_PASSWORD_HASH')) return;
+  var salt = Utilities.getUuid();
+  setSetting_('ADMIN_USERNAME', getSetting_('ADMIN_USERNAME') || 'admin');
+  setSetting_('ADMIN_PASSWORD_SALT', salt);
+  setSetting_('ADMIN_PASSWORD_HASH', hashPassword_('admin123', salt));
+}
+
+function hashPassword_(password, salt) {
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + ':' + password);
+  return bytes.map(function (b) { return ((b < 0 ? b + 256 : b).toString(16)).padStart(2, '0'); }).join('');
+}
+
+/** Client-callable (public). Logs in with the admin username/email + password, returns a session token. */
+function adminLogin(identifier, password) {
+  ensureAdminCredentials_();
+  Utilities.sleep(300); // small fixed delay to blunt brute-force guessing
+  var username = getSetting_('ADMIN_USERNAME');
+  var salt = getSetting_('ADMIN_PASSWORD_SALT');
+  var hash = getSetting_('ADMIN_PASSWORD_HASH');
+
+  if (String(identifier || '').trim().toLowerCase() !== username.toLowerCase() || hashPassword_(String(password || ''), salt) !== hash) {
+    return { success: false, message: 'Incorrect username/email or password.' };
+  }
+
+  var token = Utilities.getUuid();
+  CacheService.getScriptCache().put('session_' + token, '1', SESSION_TTL_SECONDS);
+  return { success: true, token: token, username: username };
+}
+
+function isValidAdminSession_(token) {
+  if (!token) return false;
+  var cache = CacheService.getScriptCache();
+  var key = 'session_' + token;
+  if (!cache.get(key)) return false;
+  cache.put(key, '1', SESSION_TTL_SECONDS); // sliding expiry
+  return true;
+}
+
+function requireAdminSession_(token) {
+  if (!isValidAdminSession_(token)) {
+    throw new Error('ACCESS_DENIED: Your session has expired. Please log in again.');
   }
 }
 
-function isOwner_() {
-  var owner = getSetting_('OWNER_EMAIL');
-  if (!owner) return false; // no owner claimed yet — nobody is admin until claimed
-  var email = getCurrentUserEmail_();
-  return !!email && email === owner.toLowerCase();
-}
-
-function requireOwner_() {
-  if (!isOwner_()) {
-    throw new Error('ACCESS_DENIED: You are not signed in as the store owner.');
-  }
+/** Client-callable. */
+function adminLogout(token) {
+  if (token) CacheService.getScriptCache().remove('session_' + token);
+  return { success: true };
 }
 
 /**
- * Client-callable. Returns who the visitor is and whether admin access is
- * already claimed, so the UI can show "Claim Admin Access" on first run.
+ * Client-callable (admin only). Changes the admin username and/or password.
+ * Requires the current password to confirm the change.
  */
-function getAuthStatus() {
-  var owner = getSetting_('OWNER_EMAIL');
-  return {
-    email: getCurrentUserEmail_(),
-    ownerClaimed: !!owner,
-    isOwner: isOwner_()
-  };
-}
+function changeAdminCredentials(token, payload) {
+  requireAdminSession_(token);
+  payload = payload || {};
+  var salt = getSetting_('ADMIN_PASSWORD_SALT');
+  var hash = getSetting_('ADMIN_PASSWORD_HASH');
+  if (hashPassword_(String(payload.currentPassword || ''), salt) !== hash) {
+    throw new Error('Current password is incorrect.');
+  }
 
-/**
- * Client-callable. The very first person to click "Claim Admin Access"
- * (while signed into the Google account they want as the permanent owner)
- * becomes the admin. No-op if an owner is already set.
- */
-function claimAdminAccess() {
-  var owner = getSetting_('OWNER_EMAIL');
-  if (owner) {
-    return { success: false, message: 'Admin access has already been claimed.' };
+  var newUsername = String(payload.newUsername || '').trim();
+  if (newUsername) setSetting_('ADMIN_USERNAME', newUsername);
+
+  var newPassword = String(payload.newPassword || '');
+  if (newPassword) {
+    if (newPassword.length < 6) throw new Error('New password must be at least 6 characters.');
+    var newSalt = Utilities.getUuid();
+    setSetting_('ADMIN_PASSWORD_SALT', newSalt);
+    setSetting_('ADMIN_PASSWORD_HASH', hashPassword_(newPassword, newSalt));
   }
-  var email = getCurrentUserEmail_();
-  if (!email) {
-    return { success: false, message: 'Could not detect a Google account. Make sure you are signed into Google in this browser, then reload the page.' };
-  }
-  setSetting_('OWNER_EMAIL', email);
-  return { success: true, email: email };
+  return { success: true, username: getSetting_('ADMIN_USERNAME') };
 }
 
 // ---------------------------------------------------------------------------
@@ -211,12 +252,13 @@ function setupSheets() {
   getSheet_(SHEET_PACKAGES, PACKAGE_HEADERS);
   getSheet_(SHEET_ORDERS, ORDER_HEADERS);
   seedMockPackagesIfEmpty_();
-  return 'Sheets are ready.';
+  ensureAdminCredentials_();
+  return 'Sheets are ready. Admin login: admin / admin123 (change it in the Account tab).';
 }
 
 function onOpen() {
   SpreadsheetApp.getUi()
-    .createMenu('📶 Data Bundle Store')
+    .createMenu('Data Bundle Store')
     .addItem('Initialize / repair sheets', 'setupSheets')
     .addItem('Re-seed starter pricing (only if Packages is empty)', 'seedMockPackagesIfEmpty_')
     .addToUi();
@@ -254,13 +296,19 @@ function getPublicSettings_() {
     momoNumber: getSetting_('MOMO_NUMBER'),
     momoName: getSetting_('MOMO_NAME'),
     currency: getSetting_('CURRENCY_SYMBOL'),
-    banner: composeBanner_(getRawBannerSettings_())
+    banner: composeBanner_(getRawBannerSettings_()),
+    themePrimary: getSetting_('THEME_PRIMARY'),
+    themeAccent: getSetting_('THEME_ACCENT')
   };
 }
 
 /** Client-callable (admin only). */
-function getAdminSettings() {
-  requireOwner_();
+function getAdminSettings(token) {
+  requireAdminSession_(token);
+  return getAdminSettings_();
+}
+
+function getAdminSettings_() {
   var banner = getRawBannerSettings_();
   return {
     storeName: getSetting_('STORE_NAME'),
@@ -269,7 +317,7 @@ function getAdminSettings() {
     momoNumber: getSetting_('MOMO_NUMBER'),
     momoName: getSetting_('MOMO_NAME'),
     currency: getSetting_('CURRENCY_SYMBOL'),
-    ownerEmail: getSetting_('OWNER_EMAIL'),
+    adminUsername: getSetting_('ADMIN_USERNAME'),
     geosamApiBase: getSetting_('GEOSAM_API_BASE'),
     geosamApiKeySet: !!getSetting_('GEOSAM_API_KEY'),
     geosamMode: getSetting_('GEOSAM_MODE'),
@@ -279,18 +327,21 @@ function getAdminSettings() {
     mtnDeliveryTime: banner.MTN_DELIVERY_TIME,
     telecelDeliveryTime: banner.TELECEL_DELIVERY_TIME,
     airtelTigoDeliveryTime: banner.AIRTELTIGO_DELIVERY_TIME,
-    bannerPreview: composeBanner_(banner)
+    bannerPreview: composeBanner_(banner),
+    themePrimary: getSetting_('THEME_PRIMARY'),
+    themeAccent: getSetting_('THEME_ACCENT')
   };
 }
 
 /** Client-callable (admin only). `settings` is a partial object of DEFAULT_SETTINGS keys. */
-function saveAdminSettings(settings) {
-  requireOwner_();
+function saveAdminSettings(token, settings) {
+  requireAdminSession_(token);
   var editable = [
     'STORE_NAME', 'STORE_TAGLINE', 'WHATSAPP_NUMBER', 'MOMO_NUMBER', 'MOMO_NAME', 'CURRENCY_SYMBOL',
     'GEOSAM_API_BASE', 'GEOSAM_MODE',
     'BANNER_ENABLED', 'BANNER_STATUS', 'BANNER_MESSAGE',
-    'MTN_DELIVERY_TIME', 'TELECEL_DELIVERY_TIME', 'AIRTELTIGO_DELIVERY_TIME'
+    'MTN_DELIVERY_TIME', 'TELECEL_DELIVERY_TIME', 'AIRTELTIGO_DELIVERY_TIME',
+    'THEME_PRIMARY', 'THEME_ACCENT'
   ];
   editable.forEach(function (key) {
     if (settings.hasOwnProperty(key)) setSetting_(key, settings[key]);
@@ -302,7 +353,7 @@ function saveAdminSettings(settings) {
   // API key only overwritten if a non-empty value was actually submitted,
   // so re-saving the settings form doesn't blank it out.
   if (settings.GEOSAM_API_KEY) setSetting_('GEOSAM_API_KEY', settings.GEOSAM_API_KEY);
-  return getAdminSettings();
+  return getAdminSettings_();
 }
 
 // ---------------------------------------------------------------------------
@@ -339,8 +390,12 @@ function getStorefrontPackages() {
 }
 
 /** Client-callable (admin only). Full data including base price / profit. */
-function getAdminPackages() {
-  requireOwner_();
+function getAdminPackages(token) {
+  requireAdminSession_(token);
+  return getAdminPackages_();
+}
+
+function getAdminPackages_() {
   return getAllPackages_().map(function (p) {
     var base = Number(p.BasePrice) || 0;
     var selling = Number(p.SellingPrice) || 0;
@@ -370,8 +425,8 @@ function findPackageRow_(sheet, id) {
 }
 
 /** Client-callable (admin only). Update the selling price for one package. */
-function savePackageSellingPrice(id, sellingPrice) {
-  requireOwner_();
+function savePackageSellingPrice(token, id, sellingPrice) {
+  requireAdminSession_(token);
   var price = Number(sellingPrice);
   if (isNaN(price) || price <= 0) throw new Error('Enter a valid selling price.');
 
@@ -388,8 +443,8 @@ function savePackageSellingPrice(id, sellingPrice) {
 }
 
 /** Client-callable (admin only). Show/hide a package on the storefront. */
-function togglePackageActive(id, active) {
-  requireOwner_();
+function togglePackageActive(token, id, active) {
+  requireAdminSession_(token);
   var sheet = getSheet_(SHEET_PACKAGES, PACKAGE_HEADERS);
   var row = findPackageRow_(sheet, id);
   if (row === -1) throw new Error('Package not found.');
@@ -404,8 +459,8 @@ function togglePackageActive(id, active) {
  * the exact volume Geosam will send (e.g. 1000 for "1GB", 2000 for "2GB"),
  * used directly in the Send Bundle API call.
  */
-function addManualPackage(pkg) {
-  requireOwner_();
+function addManualPackage(token, pkg) {
+  requireAdminSession_(token);
   if (NETWORKS.indexOf(pkg.network) === -1) throw new Error('Unknown network.');
   if (!pkg.size) throw new Error('Size is required.');
   var amountMB = Number(pkg.amountMB) || 0;
@@ -425,8 +480,8 @@ function addManualPackage(pkg) {
 }
 
 /** Client-callable (admin only). */
-function deletePackage(id) {
-  requireOwner_();
+function deletePackage(token, id) {
+  requireAdminSession_(token);
   var sheet = getSheet_(SHEET_PACKAGES, PACKAGE_HEADERS);
   var row = findPackageRow_(sheet, id);
   if (row === -1) throw new Error('Package not found.');
@@ -571,9 +626,7 @@ function checkGeosamTransactionStatus_(reference) {
   return geosamRequest_(GEOSAM_ENDPOINTS.transactionDetail + encodeURIComponent(reference) + '/', 'get');
 }
 
-/** Client-callable (admin only). Shows current Geosam wallet balances per network. */
-function getGeosamWalletBalance() {
-  requireOwner_();
+function getGeosamWalletBalance_() {
   var mode = getSetting_('GEOSAM_MODE') || 'mock';
   if (mode !== 'live') {
     return { success: false, message: 'API Mode is set to Mock — switch to Live to check your real Geosam wallet balance.' };
@@ -595,14 +648,20 @@ function getGeosamWalletBalance() {
   }
 }
 
+/** Client-callable (admin only). Shows current Geosam wallet balances per network. */
+function getGeosamWalletBalance(token) {
+  requireAdminSession_(token);
+  return getGeosamWalletBalance_();
+}
+
 /** Client-callable (admin only). "Test Connection" button in API Settings — a safe, read-only check. */
-function testGeosamConnection() {
-  requireOwner_();
+function testGeosamConnection(token) {
+  requireAdminSession_(token);
   var mode = getSetting_('GEOSAM_MODE') || 'mock';
   if (mode !== 'live') {
     return { success: false, message: 'API Mode is set to Mock — switch to Live to test the real Geosam connection.' };
   }
-  var result = getGeosamWalletBalance();
+  var result = getGeosamWalletBalance_();
   if (!result.success) return result;
   if (!result.isActive) {
     return { success: false, message: 'Connected, but your Geosam API account is not approved/active yet (signed in as ' + result.user + ').' };
@@ -715,8 +774,12 @@ function getAllOrders_() {
 }
 
 /** Client-callable (admin only). Most recent first, optionally filtered by status. */
-function getAdminOrders(statusFilter) {
-  requireOwner_();
+function getAdminOrders(token, statusFilter) {
+  requireAdminSession_(token);
+  return getAdminOrders_(statusFilter);
+}
+
+function getAdminOrders_(statusFilter) {
   var orders = getAllOrders_();
   if (statusFilter && statusFilter !== 'All') {
     orders = orders.filter(function (o) { return o.Status === statusFilter; });
@@ -768,8 +831,8 @@ function setOrderStatus_(orderId, status, extra) {
 }
 
 /** Client-callable (admin only). Mark payment as confirmed after checking your MoMo statement. */
-function markOrderPaid(orderId) {
-  requireOwner_();
+function markOrderPaid(token, orderId) {
+  requireAdminSession_(token);
   setOrderStatus_(orderId, ORDER_STATUS.PAID);
   return { success: true };
 }
@@ -781,8 +844,8 @@ function markOrderPaid(orderId) {
  * delivery. A fresh reference is generated on every attempt so retrying a
  * failed order never collides with a previous Geosam reference.
  */
-function fulfillOrder(orderId) {
-  requireOwner_();
+function fulfillOrder(token, orderId) {
+  requireAdminSession_(token);
   var sheet = getSheet_(SHEET_ORDERS, ORDER_HEADERS);
   var row = findOrderRow_(sheet, orderId);
   if (row === -1) throw new Error('Order not found.');
@@ -813,8 +876,8 @@ function fulfillOrder(orderId) {
  * (status "Processing") and updates it to Delivered/Failed based on the
  * real transaction status. Safe to click more than once.
  */
-function checkOrderGeosamStatus(orderId) {
-  requireOwner_();
+function checkOrderGeosamStatus(token, orderId) {
+  requireAdminSession_(token);
   var sheet = getSheet_(SHEET_ORDERS, ORDER_HEADERS);
   var row = findOrderRow_(sheet, orderId);
   if (row === -1) throw new Error('Order not found.');
@@ -843,22 +906,22 @@ function checkOrderGeosamStatus(orderId) {
 }
 
 /** Client-callable (admin only). */
-function markOrderDelivered(orderId) {
-  requireOwner_();
+function markOrderDelivered(token, orderId) {
+  requireAdminSession_(token);
   setOrderStatus_(orderId, ORDER_STATUS.DELIVERED);
   return { success: true };
 }
 
 /** Client-callable (admin only). */
-function markOrderFailed(orderId, reason) {
-  requireOwner_();
+function markOrderFailed(token, orderId, reason) {
+  requireAdminSession_(token);
   setOrderStatus_(orderId, ORDER_STATUS.FAILED, { notes: reason || '' });
   return { success: true };
 }
 
 /** Client-callable (admin only). */
-function cancelOrder(orderId) {
-  requireOwner_();
+function cancelOrder(token, orderId) {
+  requireAdminSession_(token);
   setOrderStatus_(orderId, ORDER_STATUS.CANCELLED);
   return { success: true };
 }
@@ -868,8 +931,12 @@ function cancelOrder(orderId) {
 // ---------------------------------------------------------------------------
 
 /** Client-callable (admin only). */
-function getDashboardStats() {
-  requireOwner_();
+function getDashboardStats(token) {
+  requireAdminSession_(token);
+  return getDashboardStats_();
+}
+
+function getDashboardStats_() {
   var orders = getAllOrders_();
   var counted = orders.filter(function (o) {
     return o.Status === ORDER_STATUS.PAID || o.Status === ORDER_STATUS.PROCESSING || o.Status === ORDER_STATUS.DELIVERED;
@@ -908,19 +975,22 @@ function getStoreBootstrap() {
   };
 }
 
-/** Client-callable. Everything the admin portal needs in one call (or an access-denied flag). */
-function getAdminBootstrap() {
-  var auth = getAuthStatus();
-  if (!auth.isOwner) {
-    return { authorized: false, auth: auth };
+/**
+ * Client-callable (public — deliberately does not throw on a bad/missing
+ * token, so the client can tell "not logged in" apart from a real error and
+ * show the login form instead of an error screen).
+ */
+function getAdminBootstrap(token) {
+  ensureAdminCredentials_();
+  if (!isValidAdminSession_(token)) {
+    return { authorized: false };
   }
   return {
     authorized: true,
-    auth: auth,
-    settings: getAdminSettings(),
-    packages: getAdminPackages(),
-    orders: getAdminOrders(),
-    stats: getDashboardStats(),
+    settings: getAdminSettings_(),
+    packages: getAdminPackages_(),
+    orders: getAdminOrders_(),
+    stats: getDashboardStats_(),
     networks: NETWORKS,
     orderStatuses: ORDER_STATUS
   };

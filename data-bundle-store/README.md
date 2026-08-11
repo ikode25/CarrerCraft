@@ -1,7 +1,7 @@
 # Data Bundle Store — Google Apps Script
 
 A self-serve storefront for reselling **MTN**, **Telecel**, and **AirtelTigo** data
-bundles, plus a private admin portal (locked to your Google account) where you
+bundles, plus a private admin portal (username + password login) where you
 set your own selling prices, fulfill orders through Geosam's Send Bundle API,
 and track your profit per order.
 
@@ -29,7 +29,8 @@ This creates two sheets:
 - **Orders** — `OrderID, Timestamp, CustomerName, RecipientPhone, PayerPhone, Network, Size, SellingPrice, BasePrice, Profit, MoMoRef, Status, GeosamOrderId, Notes, UpdatedAt`
 
 It also seeds **starter pricing** for all three networks so your storefront
-isn't empty on day one. These are illustrative placeholder prices — verify
+isn't empty on day one, and sets up the **default admin login**:
+`admin` / `admin123`. These are illustrative placeholder prices — verify
 and correct them against your real Geosam dashboard/shop pricing before
 going live (see step 5 — Geosam's API doesn't expose a price list, so this
 is always a manual step).
@@ -43,14 +44,28 @@ is always a manual step).
 Click **Deploy** and copy the web app URL — that's your storefront link
 (`.../exec`). Share that with customers.
 
-## 4. Claim admin access
+## 4. Admin login
 
-Open `YOUR_WEB_APP_URL?page=admin` while signed into the Google account you
-want as the store owner, and click **Claim Admin Access**. This is a one-time
-action — whichever Google account claims it first is permanently the only
-account that can manage pricing, orders, and settings. (If you ever need to
-change the owner, edit the `OWNER_EMAIL` script property directly in
-**Project Settings → Script properties**.)
+Open `YOUR_WEB_APP_URL?page=admin` (or tap the small person icon at the top
+of your storefront) and log in with:
+
+- **Username/email:** `admin`
+- **Password:** `admin123`
+
+**Change both immediately** from the admin **Account** tab — enter your
+current password once, then set a new username/email and password. There's
+no Google-account requirement; the admin portal works the same in any
+browser, on any device, for whoever has the current credentials.
+
+Login uses a session token stored in this browser's `localStorage`, valid
+for 6 hours and renewed automatically while you're active — logging in again
+is only needed after a long idle period or on a new device/browser.
+
+If you ever get locked out (forgot the password), reset it from the Apps
+Script editor: **Project Settings → Script properties**, delete
+`ADMIN_PASSWORD_HASH` and `ADMIN_PASSWORD_SALT` (and `ADMIN_USERNAME` too, if
+you also forgot the username), then reload `?page=admin` — the password
+resets to `admin123` (and the username to `admin`, if you cleared it).
 
 Bookmark the `?page=admin` URL — that's your private dashboard.
 
@@ -118,12 +133,12 @@ section to touch.
 
 ## 7. Live status banner
 
-In **Store Setup**, there's a "📢 Live Status Banner" card that controls a
+In **Store Setup**, there's a "Live Status Banner" card that controls a
 scrolling ticker shown at the top of your storefront (below the nav) — the
 same idea as Geosam's own "Network: Hi, the network is good today!" bar.
 
-- **Network status**: Good 🟢 / Delayed 🟡 / Down 🔴 — sets the banner's color
-  and a sensible default message.
+- **Network status**: Good / Delayed / Down — sets the banner's color
+  (green/amber/red) and a sensible default message.
 - **Per-network delivery time** (e.g. MTN defaults to "10-30 mins"): shown as
   "MTN: 10-30 mins" etc. in the banner. Leave a network blank to leave it out
   entirely.
@@ -135,13 +150,26 @@ same idea as Geosam's own "Network: Hi, the network is good today!" bar.
 The banner text is composed server-side in `composeBanner_()` in `Code.gs` —
 edit `BANNER_STATUS_DEFAULTS` there if you want different default wording.
 
-## 8. Notes & guardrails already built in
+## 8. Icons & system color
+
+Every icon in the app (nav, buttons, stat cards, status dots) is a small
+inline SVG defined in the `ICON_PATHS` object near the top of `index.html`'s
+script — no emoji, no external icon font/CDN, so it renders identically on
+every device instead of depending on each platform's emoji set.
+
+In **Store Setup → System Color**, pick a **primary** and **accent** color
+with the color pickers; everything else (hover states, gradients across both
+the storefront and admin portal) is derived from those two automatically, so
+you only ever choose two colors. Changes preview live before you save.
+
+## 9. Notes & guardrails already built in
 
 - A selling price can never be saved at or below the current base price — the
   UI and the server both enforce it.
 - The admin API (settings, pricing, order actions) is rejected server-side
-  for anyone who isn't the claimed owner, even if they load `?page=admin`
-  directly — there's no client-side-only gate.
+  for anyone without a valid session token, even if they call it directly —
+  there's no client-side-only gate. Passwords are stored salted + hashed
+  (SHA-256), never in plain text.
 - The storefront never exposes base price or profit — only your selling
   price.
 - The web app is deployed with `X-Frame-Options: ALLOWALL`, so you can embed
@@ -149,14 +177,16 @@ edit `BANNER_STATUS_DEFAULTS` there if you want different default wording.
   repo's root `index.html` embeds another Apps Script project, if you want a
   custom domain via GitHub Pages.
 
-## 9. Customizing the look
+## 10. Customizing the look
 
-All styling lives in the `<style>` block at the top of `index.html` as CSS
-variables (`--navy`, `--gold`, `--mtn`, `--telecel`, `--at-1`/`--at-2`, etc.) —
-change those to re-theme the whole app without touching layout markup.
+All layout/spacing styling lives in the `<style>` block at the top of
+`index.html`. Colors are CSS variables (`--navy`, `--gold`, `--mtn`,
+`--telecel`, `--at-1`/`--at-2`, etc.) driven by the System Color picker (see
+above) plus the network brand colors, which stay fixed since they're each
+network's real brand identity.
 
 Both the storefront and admin portal are mobile-responsive: the network
 tabs/package grid reflow, tables scroll horizontally instead of breaking the
-page, modals become bottom sheets, the admin sidebar collapses behind a ☰
-menu below ~820px, and form inputs use 16px font on small screens to stop
+page, modals become bottom sheets, the admin sidebar collapses behind a menu
+button below ~820px, and form inputs use 16px font on small screens to stop
 iOS Safari's auto-zoom-on-focus.
