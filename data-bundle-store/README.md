@@ -2,8 +2,8 @@
 
 A self-serve storefront for reselling **MTN**, **Telecel**, and **AirtelTigo** data
 bundles, plus a private admin portal (username + password login) where you
-set your own selling prices, fulfill orders through Geosam's Send Bundle API,
-and track your profit per order.
+set your own selling prices, fulfill orders through **Geosam or iDataGH**
+(switch instantly if one is down), and track your profit per order.
 
 - `Code.gs` — backend: Google Sheets as the database, all server logic, and the
   Geosam API adapter.
@@ -27,8 +27,13 @@ carousel photo later will prompt a second time for Google Drive access.
 
 This creates three sheets:
 - **Packages** — `ID, Network, Size, Validity, AmountMB, BasePrice, SellingPrice, Active, LastUpdated`
-- **Orders** — `OrderID, Timestamp, CustomerName, RecipientPhone, PayerPhone, Network, Size, SellingPrice, BasePrice, Profit, MoMoRef, Status, GeosamOrderId, Notes, UpdatedAt`
+- **Orders** — `OrderID, Timestamp, CustomerName, RecipientPhone, PayerPhone, Network, Size, SellingPrice, BasePrice, Profit, MoMoRef, Status, ProviderRef, Notes, UpdatedAt, Provider`
 - **Carousel** — `ID, Url, Caption, Order, Active, FileId, UploadedAt`
+
+It also locks the `RecipientPhone`/`PayerPhone` columns to plain-text
+formatting — without this, Google Sheets can silently turn `"0244000000"`
+into the number `244000000` (dropping the leading zero), which broke order
+tracking in earlier versions. Safe to re-run `setupSheets` any time.
 
 It also seeds **starter pricing** for all three networks so your storefront
 isn't empty on day one, and sets up the **default admin login**:
@@ -57,10 +62,11 @@ after an update:
 2. Click the pencil/edit icon on your existing deployment (don't create a
    brand-new one — that gives you a different URL).
 3. Version dropdown → **New version** → **Deploy**.
-4. Reload the page. Every screen (storefront footer, admin sidebar/login)
-   shows a small version tag like `v1.5.0` in low-contrast text — if it
-   doesn't match the version in this repo's `Code.gs` (`APP_VERSION` near the
-   top), the redeploy didn't take effect yet.
+4. Reload the page (or click the refresh icon — see "Faster loading" below).
+   Every screen (storefront footer, admin sidebar/login) shows a small
+   version tag like `v1.7.0` in low-contrast text — if it doesn't match the
+   version in this repo's `Code.gs` (`APP_VERSION` near the top), the
+   redeploy didn't take effect yet.
 
 If the page is still completely blank (not even the dark "Loading…" spinner,
 which is plain HTML/CSS with no JavaScript dependency) after confirming the
@@ -104,9 +110,18 @@ deployment (see the redeploy checklist above).
 
 Bookmark the `?page=admin` URL — that's your private dashboard.
 
-## 5. Connect Geosam
+## 5. Connect a data provider (Geosam and/or iDataGH)
 
-This app is wired to Geosam's actual published API
+The admin **API Settings** tab has a **Data Provider** switch (Geosam /
+iDataGH) plus a separate card per provider — both providers' credentials
+stay saved at all times, so if one has an outage you can switch the active
+provider in one click without re-entering anything. Every order records
+which provider actually fulfilled it, so status checks always poll the
+right one even if you switch providers afterward.
+
+### Geosam
+
+Wired to Geosam's actual published API
 (https://geosams.com/controller/api-documentation/):
 
 | Purpose | Endpoint |
@@ -128,20 +143,27 @@ in MB you already know. That means:
 - Each package needs its exact **data amount in MB** (e.g. `1000` for 1GB) —
   this is sent to Geosam byte-for-byte, so get it right.
 
-Setup:
-1. In the admin **API Settings** tab, paste your Geosam API token, switch
-   **API Mode** to **Live**, and click **Test connection** (a safe, read-only
-   check against Account Status — it won't send a real bundle).
-2. Click **Check wallet balance** any time to see your live MTN/Telecel/
-   AirtelTigo balances.
-3. Add your real packages in the **Pricing** tab with accurate base prices
-   and MB amounts (delete/edit the starter rows first — they're illustrative
-   estimates, not real Geosam prices).
+Setup: paste your Geosam API token in its card, switch its Mode to **Live**,
+make sure Geosam is the **active provider** above, then click **Test
+connection** (a safe, read-only check against Account Status — it won't send
+a real bundle) or **Check wallet balance**.
 
 Everything Geosam-specific lives in the **GEOSAM ADAPTER** section of
 `Code.gs` (`buyGeosamBundle_()`, `checkGeosamTransactionStatus_()`,
-`getGeosamWalletBalance()`) — if Geosam changes their API, that's the only
+`getGeosamWalletBalance_()`) — if Geosam changes their API, that's the only
 section to touch.
+
+### iDataGH
+
+This adapter is a **placeholder** — iDataGH's real API isn't documented
+here yet. Its card works in Mock mode out of the box (so you can test the
+provider-switching flow), but Live mode will fail until the adapter is
+wired up to iDataGH's real endpoints. That's in the **IDATAGH ADAPTER**
+section of `Code.gs` (`buyIdataghBundle_()`, `checkIdataghTransactionStatus_()`,
+`getIdataghWalletBalance_()`), clearly marked with `TODO` comments for the
+base URL, auth header, and request/response shapes. Share iDataGH's API
+docs (the same way Geosam's were shared) and those TODOs get filled in the
+same way Geosam's adapter was built from a placeholder to the real thing.
 
 ## 6. How the money flow works
 
@@ -151,17 +173,19 @@ section to touch.
    submitted without it). Order status: **Pending Payment**.
 2. You check your MoMo statement for that Transaction ID. If it matches,
    click **Mark Paid** in Orders. Status: **Paid - Awaiting Fulfillment**.
-3. Click **Fulfill via Geosam** — this calls Send Bundle with a freshly
-   generated reference. Geosam's API is **asynchronous**: a successful reply
-   only means "request received and is being processed," so the order moves
-   to **Processing**, not straight to Delivered.
-4. Click **Check Geosam Status** on a Processing order to poll Transaction
-   Detail — it updates the order to **Delivered** once Geosam confirms
-   completion, or **Failed** with Geosam's reason if it didn't go through.
-   Safe to click repeatedly. "Mark Delivered" is also available as a manual
-   override if you confirm delivery another way.
-5. Retrying a failed fulfillment generates a brand-new Geosam reference each
-   time, so it never collides with a previous attempt ("Duplicate reference
+3. Click **Fulfill via &lt;Provider&gt;** (labeled with whichever provider is
+   currently active) — this sends the order with a freshly generated
+   reference, and records on the order which provider it went to. Both
+   providers' APIs are treated as **asynchronous**: a successful reply only
+   means "request received and is being processed," so the order moves to
+   **Processing**, not straight to Delivered.
+4. Click **Check &lt;Provider&gt; Status** on a Processing order to poll that
+   *same* provider — it updates the order to **Delivered** once confirmed,
+   or **Failed** with the provider's reason if it didn't go through. Safe to
+   click repeatedly. "Mark Delivered" is also available as a manual override
+   if you confirm delivery another way.
+5. Retrying a failed fulfillment generates a brand-new reference each time,
+   so it never collides with a previous attempt ("Duplicate reference
    detected").
 6. Profit (`SellingPrice - BasePrice`, snapshotted at order time) only counts
    toward your Dashboard totals once the order reaches Paid, Processing, or
@@ -205,6 +229,30 @@ file from Google Drive.
   entirely — the storefront looks the same as before you added any.
 - The first upload will prompt you to re-authorize the Apps Script project
   for Google Drive access — that's expected, approve it.
+- Image URLs are always derived from the stored Drive file ID at read time
+  (not from a saved link), so if you're on a version before this was fixed,
+  photos that showed a broken-image icon will start rendering correctly
+  automatically once you're on the latest code — no re-upload needed.
+
+## 7c. WhatsApp button & AI chat assistant
+
+Two floating buttons sit in the bottom-right corner of the storefront:
+
+- **WhatsApp** (green, gently bouncing) — only shown if you've set a
+  WhatsApp number in Store Setup. Opens a chat with a pre-filled "I need
+  help with an order" message.
+- **Chat assistant** — opens an in-page chat panel. Works with **zero
+  setup**: Mock mode matches keywords in the customer's question (pricing,
+  delivery time, payment, tracking, "talk to a human") against your live
+  store settings, so answers are always accurate even with no AI connected.
+
+To upgrade to real generative AI: get a free API key at
+https://aistudio.google.com/apikey, paste it into **API Settings → AI
+Assistant**, and switch Mode to **Live**. Live mode gives the model your
+store's live pricing/delivery/payment info as context and keeps it scoped to
+answering store-related questions; if a live call ever fails for any reason,
+it silently falls back to the same Mock-mode FAQ responder rather than
+breaking the chat.
 
 ## 8. Icons & system color
 
@@ -217,6 +265,22 @@ In **Store Setup → System Color**, pick a **primary** and **accent** color
 with the color pickers; everything else (hover states, gradients across both
 the storefront and admin portal) is derived from those two automatically, so
 you only ever choose two colors. Changes preview live before you save.
+
+## 8b. Faster loading (SWR-style caching)
+
+Every `google.script.run` call is a real network round trip to Apps
+Script's servers, which is inherently slower than a normal web request —
+there's no literal npm `swr` package to install here (Apps Script serves
+plain HTML/JS, not a bundled app), so this app implements the same
+**stale-while-revalidate** idea by hand: the last-known storefront/admin
+data is cached in the browser's `localStorage` and rendered *immediately* on
+your next visit, while a fresh copy quietly loads in the background and
+replaces it the moment it arrives. First visit (or after clearing browser
+data) still waits on the real request as before.
+
+Click the refresh icon — top-right of the storefront nav, or "Refresh data"
+in the admin sidebar — any time you want to force an immediate reload
+instead of waiting for the background revalidation.
 
 ## 9. Notes & guardrails already built in
 

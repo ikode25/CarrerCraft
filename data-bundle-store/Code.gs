@@ -43,14 +43,18 @@
 // actually picked up the latest code (Apps Script only serves new code to
 // the live /exec URL after Deploy > Manage deployments > Edit > New version
 // > Deploy — saving the file alone is not enough).
-var APP_VERSION = 'v1.6.0';
+var APP_VERSION = 'v1.7.0';
 
 var SHEET_PACKAGES = 'Packages';
 var SHEET_ORDERS = 'Orders';
 var SHEET_CAROUSEL = 'Carousel';
 
 var PACKAGE_HEADERS = ['ID', 'Network', 'Size', 'Validity', 'AmountMB', 'BasePrice', 'SellingPrice', 'Active', 'LastUpdated'];
-var ORDER_HEADERS = ['OrderID', 'Timestamp', 'CustomerName', 'RecipientPhone', 'PayerPhone', 'Network', 'Size', 'SellingPrice', 'BasePrice', 'Profit', 'MoMoRef', 'Status', 'GeosamOrderId', 'Notes', 'UpdatedAt'];
+// 'Provider' records which data provider (geosam/idatagh) actually
+// fulfilled the order, so a status check always polls the right one even
+// if you switch providers afterward. Blank on old rows written before
+// multi-provider support — treated as 'geosam' (the original default).
+var ORDER_HEADERS = ['OrderID', 'Timestamp', 'CustomerName', 'RecipientPhone', 'PayerPhone', 'Network', 'Size', 'SellingPrice', 'BasePrice', 'Profit', 'MoMoRef', 'Status', 'ProviderRef', 'Notes', 'UpdatedAt', 'Provider'];
 var CAROUSEL_HEADERS = ['ID', 'Url', 'Caption', 'Order', 'Active', 'FileId', 'UploadedAt'];
 
 var NETWORKS = ['MTN', 'Telecel', 'AirtelTigo'];
@@ -74,9 +78,26 @@ var DEFAULT_SETTINGS = {
   MOMO_NUMBER: '',
   MOMO_NAME: '',
   CURRENCY_SYMBOL: 'GH₵',
+
+  // Which data provider fulfills orders right now. Both providers' credentials
+  // are kept saved at all times, so switching is instant if one is down.
+  DATA_PROVIDER: 'geosam', // 'geosam' | 'idatagh'
+
   GEOSAM_API_BASE: 'https://www.geosams.com',
   GEOSAM_API_KEY: '',
   GEOSAM_MODE: 'mock', // 'mock' | 'live'
+
+  // iDataGH adapter is a placeholder until real API docs are provided —
+  // see the IDATAGH ADAPTER section below.
+  IDATAGH_API_BASE: '',
+  IDATAGH_API_KEY: '',
+  IDATAGH_MODE: 'mock', // 'mock' | 'live'
+
+  // Customer-facing chat assistant. Works out of the box in 'mock' mode
+  // (rule-based FAQ answers built from your live store settings); 'live'
+  // mode calls Google's Gemini API with an API key you provide.
+  AI_MODE: 'mock', // 'mock' | 'live'
+  AI_API_KEY: '',
 
   // Live status banner shown as a scrolling ticker on the storefront.
   BANNER_ENABLED: 'true',
@@ -263,10 +284,19 @@ function sheetRowsToObjects_(sheet, headers) {
  */
 function setupSheets() {
   getSheet_(SHEET_PACKAGES, PACKAGE_HEADERS);
-  getSheet_(SHEET_ORDERS, ORDER_HEADERS);
+  var ordersSheet = getSheet_(SHEET_ORDERS, ORDER_HEADERS);
   getSheet_(SHEET_CAROUSEL, CAROUSEL_HEADERS);
   seedMockPackagesIfEmpty_();
   ensureAdminCredentials_();
+
+  // Force the phone columns to stay plain text so Sheets never silently
+  // reinterprets "0244000000" as the number 244000000 (dropping the
+  // leading zero, which breaks order tracking). Safe to re-run any time.
+  ['RecipientPhone', 'PayerPhone'].forEach(function (col) {
+    var idx = ORDER_HEADERS.indexOf(col) + 1;
+    ordersSheet.getRange(1, idx, 2000, 1).setNumberFormat('@');
+  });
+
   return 'Sheets are ready. Admin login: admin / admin123 (change it in the Account tab).';
 }
 
@@ -332,9 +362,15 @@ function getAdminSettings_() {
     momoName: getSetting_('MOMO_NAME'),
     currency: getSetting_('CURRENCY_SYMBOL'),
     adminUsername: getSetting_('ADMIN_USERNAME'),
+    dataProvider: getSetting_('DATA_PROVIDER') || 'geosam',
     geosamApiBase: getSetting_('GEOSAM_API_BASE'),
     geosamApiKeySet: !!getSetting_('GEOSAM_API_KEY'),
     geosamMode: getSetting_('GEOSAM_MODE'),
+    idataghApiBase: getSetting_('IDATAGH_API_BASE'),
+    idataghApiKeySet: !!getSetting_('IDATAGH_API_KEY'),
+    idataghMode: getSetting_('IDATAGH_MODE'),
+    aiMode: getSetting_('AI_MODE'),
+    aiApiKeySet: !!getSetting_('AI_API_KEY'),
     bannerEnabled: banner.BANNER_ENABLED === 'true',
     bannerStatus: banner.BANNER_STATUS || 'good',
     bannerMessage: banner.BANNER_MESSAGE,
@@ -352,7 +388,7 @@ function saveAdminSettings(token, settings) {
   requireAdminSession_(token);
   var editable = [
     'STORE_NAME', 'STORE_TAGLINE', 'WHATSAPP_NUMBER', 'MOMO_NUMBER', 'MOMO_NAME', 'CURRENCY_SYMBOL',
-    'GEOSAM_API_BASE', 'GEOSAM_MODE',
+    'DATA_PROVIDER', 'GEOSAM_API_BASE', 'GEOSAM_MODE', 'IDATAGH_API_BASE', 'IDATAGH_MODE', 'AI_MODE',
     'BANNER_ENABLED', 'BANNER_STATUS', 'BANNER_MESSAGE',
     'MTN_DELIVERY_TIME', 'TELECEL_DELIVERY_TIME', 'AIRTELTIGO_DELIVERY_TIME',
     'THEME_PRIMARY', 'THEME_ACCENT'
@@ -364,9 +400,11 @@ function saveAdminSettings(token, settings) {
   // missing BANNER_ENABLED as explicitly "off" rather than leaving the
   // previous value in place.
   setSetting_('BANNER_ENABLED', settings.BANNER_ENABLED === 'true' ? 'true' : 'false');
-  // API key only overwritten if a non-empty value was actually submitted,
-  // so re-saving the settings form doesn't blank it out.
+  // API keys only overwritten if a non-empty value was actually submitted,
+  // so re-saving a settings form doesn't blank out an already-saved key.
   if (settings.GEOSAM_API_KEY) setSetting_('GEOSAM_API_KEY', settings.GEOSAM_API_KEY);
+  if (settings.IDATAGH_API_KEY) setSetting_('IDATAGH_API_KEY', settings.IDATAGH_API_KEY);
+  if (settings.AI_API_KEY) setSetting_('AI_API_KEY', settings.AI_API_KEY);
   return getAdminSettings_();
 }
 
@@ -580,15 +618,23 @@ function getAllCarousel_() {
 }
 
 /** Client-callable (public). Active images only, in display order. */
+// Always derive the URL from the stored Drive file ID rather than trusting
+// whatever was saved at upload time — this means fixing the URL format
+// here instantly repairs images uploaded before that fix, no re-upload
+// needed.
+function carouselImageUrl_(c) {
+  return c.FileId ? ('https://drive.google.com/thumbnail?id=' + c.FileId + '&sz=w1600') : c.Url;
+}
+
 function getCarouselImages_() {
   return getAllCarousel_()
     .filter(function (c) { return c.Active === true || c.Active === 'TRUE'; })
-    .map(function (c) { return { id: c.ID, url: c.Url, caption: c.Caption }; });
+    .map(function (c) { return { id: c.ID, url: carouselImageUrl_(c), caption: c.Caption }; });
 }
 
 function getAdminCarousel_() {
   return getAllCarousel_().map(function (c) {
-    return { id: c.ID, url: c.Url, caption: c.Caption, active: c.Active === true || c.Active === 'TRUE' };
+    return { id: c.ID, url: carouselImageUrl_(c), caption: c.Caption, active: c.Active === true || c.Active === 'TRUE' };
   });
 }
 
@@ -618,8 +664,16 @@ function uploadCarouselImage(token, payload) {
   var blob = Utilities.newBlob(bytes, mimeType, payload.fileName || 'carousel-image');
   var folder = getCarouselFolder_();
   var file = folder.createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  var url = 'https://drive.google.com/uc?export=view&id=' + file.getId();
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (err) {
+    file.setTrashed(true);
+    throw new Error('Could not make this photo publicly viewable (your Drive/Workspace sharing policy may block "anyone with the link"). Ask your Google Workspace admin to allow external link sharing, or use a personal Google account for this project.');
+  }
+  // drive.google.com/uc?export=view frequently fails to render inline (shows
+  // a "can't preview" page instead) — the /thumbnail endpoint is the
+  // reliable way to hotlink a Drive image directly into an <img> tag.
+  var url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1600';
 
   var sheet = getSheet_(SHEET_CAROUSEL, CAROUSEL_HEADERS);
   var existing = getAllCarousel_();
@@ -721,7 +775,7 @@ function geosamRequest_(path, method, payload) {
  * Places the actual bundle purchase with Geosam once an order has been
  * marked Paid by the admin. `order` needs Network, RecipientPhone,
  * AmountMB, and a Reference (unique per attempt — see fulfillOrder()).
- * Returns { success, status, geosamRef, message }.
+ * Returns { success, status, providerRef, message }.
  * In 'mock' mode, simulates acceptance so the admin flow can be tested
  * end to end before the real API is connected.
  */
@@ -731,7 +785,7 @@ function buyGeosamBundle_(order) {
     return {
       success: true,
       status: 'Processing',
-      geosamRef: order.Reference,
+      providerRef: order.Reference,
       message: 'Simulated: bundle request accepted (Geosam API Mode is set to Mock).'
     };
   }
@@ -745,9 +799,9 @@ function buyGeosamBundle_(order) {
   });
 
   if (String(res.code) === '200') {
-    return { success: true, status: 'Processing', geosamRef: order.Reference, message: res.message || 'Bundle request received and is being processed.' };
+    return { success: true, status: 'Processing', providerRef: order.Reference, message: res.message || 'Bundle request received and is being processed.' };
   }
-  return { success: false, status: 'Failed', geosamRef: order.Reference, message: res.message || 'Geosam rejected the request.' };
+  return { success: false, status: 'Failed', providerRef: order.Reference, message: res.message || 'Geosam rejected the request.' };
 }
 
 /**
@@ -785,18 +839,10 @@ function getGeosamWalletBalance_() {
   }
 }
 
-/** Client-callable (admin only). Shows current Geosam wallet balances per network. */
-function getGeosamWalletBalance(token) {
-  requireAdminSession_(token);
-  return getGeosamWalletBalance_();
-}
-
-/** Client-callable (admin only). "Test Connection" button in API Settings — a safe, read-only check. */
-function testGeosamConnection(token) {
-  requireAdminSession_(token);
+function testGeosamConnection_() {
   var mode = getSetting_('GEOSAM_MODE') || 'mock';
   if (mode !== 'live') {
-    return { success: false, message: 'API Mode is set to Mock — switch to Live to test the real Geosam connection.' };
+    return { success: false, message: 'Geosam API Mode is set to Mock — switch to Live to test the real connection.' };
   }
   var result = getGeosamWalletBalance_();
   if (!result.success) return result;
@@ -804,6 +850,129 @@ function testGeosamConnection(token) {
     return { success: false, message: 'Connected, but your Geosam API account is not approved/active yet (signed in as ' + result.user + ').' };
   }
   return { success: true, message: 'Connected as ' + result.user + '. Balances — MTN: ' + result.balances.MTN + ', Telecel: ' + result.balances.Telecel + ', AirtelTigo: ' + result.balances.AirtelTigo + '.' };
+}
+
+// ---------------------------------------------------------------------------
+// 7b. IDATAGH ADAPTER (placeholder — no API docs yet)
+// ---------------------------------------------------------------------------
+// iDataGH's real API isn't documented here — this mirrors the exact same
+// safe pattern the Geosam adapter used before its real docs were provided:
+// Mock mode works out of the box for testing the switch-over flow; every
+// TODO below is what needs fixing once you share iDataGH's API docs
+// (base URL, auth scheme, send/status endpoints and their request/response
+// shapes) the same way you did for Geosam.
+// ---------------------------------------------------------------------------
+
+var IDATAGH_ENDPOINTS = {
+  sendBundle: '/api/send',            // TODO confirm real path
+  transactionDetail: '/api/status/'   // TODO confirm real path + how the reference is passed
+};
+
+function idataghRequest_(path, method, payload) {
+  var base = getSetting_('IDATAGH_API_BASE');
+  var key = getSetting_('IDATAGH_API_KEY');
+  if (!base || !key) {
+    throw new Error('iDataGH API is not configured yet. Add your API base URL and key in API Settings, or keep iDataGH Mode set to "Mock".');
+  }
+  var options = {
+    method: method || 'get',
+    contentType: 'application/json',
+    headers: { 'Authorization': 'Bearer ' + key }, // TODO confirm auth scheme (may be 'Token', an API-key header, etc.)
+    muteHttpExceptions: true
+  };
+  if (payload) options.payload = JSON.stringify(payload);
+
+  var response = UrlFetchApp.fetch(base.replace(/\/$/, '') + path, options);
+  var httpCode = response.getResponseCode();
+  var body = response.getContentText();
+  var parsed = null;
+  try { parsed = JSON.parse(body); } catch (e) { /* leave null */ }
+
+  if (httpCode < 200 || httpCode >= 300) {
+    throw new Error('iDataGH API error (HTTP ' + httpCode + '): ' + (parsed && parsed.message ? parsed.message : body));
+  }
+  if (parsed === null) {
+    throw new Error('iDataGH API returned a non-JSON response: ' + body.substring(0, 200));
+  }
+  return parsed;
+}
+
+function buyIdataghBundle_(order) {
+  var mode = getSetting_('IDATAGH_MODE') || 'mock';
+  if (mode !== 'live') {
+    return {
+      success: true,
+      status: 'Processing',
+      providerRef: order.Reference,
+      message: 'Simulated: bundle request accepted (iDataGH Mode is set to Mock).'
+    };
+  }
+  // TODO: adjust field names/response shape once you have iDataGH's real docs.
+  var res = idataghRequest_(IDATAGH_ENDPOINTS.sendBundle, 'post', {
+    network: order.Network,
+    phone: order.RecipientPhone,
+    amount_mb: Number(order.AmountMB),
+    reference: order.Reference
+  });
+  var ok = res.success === true || res.status === 'success' || String(res.code) === '200';
+  return {
+    success: ok,
+    status: ok ? 'Processing' : 'Failed',
+    providerRef: order.Reference,
+    message: res.message || (ok ? 'Bundle request accepted.' : 'iDataGH rejected the request.')
+  };
+}
+
+function checkIdataghTransactionStatus_(reference) {
+  var mode = getSetting_('IDATAGH_MODE') || 'mock';
+  if (mode !== 'live') {
+    return { status: 'Completed', message: 'Simulated: bundle delivered (Mock mode).' };
+  }
+  // TODO: adjust once you have iDataGH's real docs.
+  return idataghRequest_(IDATAGH_ENDPOINTS.transactionDetail + encodeURIComponent(reference), 'get');
+}
+
+function getIdataghWalletBalance_() {
+  var mode = getSetting_('IDATAGH_MODE') || 'mock';
+  if (mode !== 'live') {
+    return { success: false, message: 'iDataGH Mode is set to Mock — switch to Live to check a real balance (once the adapter below is wired up to iDataGH\'s real API).' };
+  }
+  return { success: false, message: 'iDataGH\'s real API endpoints aren\'t wired up yet — share their API docs and this can be connected the same way Geosam\'s was.' };
+}
+
+function testIdataghConnection_() {
+  return getIdataghWalletBalance_();
+}
+
+// ---------------------------------------------------------------------------
+// 7c. PROVIDER DISPATCH — routes to whichever provider is currently
+// selected (or, for status checks, whichever provider actually fulfilled
+// that specific order — see Provider column on the Orders sheet).
+// ---------------------------------------------------------------------------
+
+function buyBundle_(provider, order) {
+  return provider === 'idatagh' ? buyIdataghBundle_(order) : buyGeosamBundle_(order);
+}
+
+function checkTransactionStatus_(provider, reference) {
+  return provider === 'idatagh' ? checkIdataghTransactionStatus_(reference) : checkGeosamTransactionStatus_(reference);
+}
+
+function getProviderWalletBalance_(provider) {
+  return provider === 'idatagh' ? getIdataghWalletBalance_() : getGeosamWalletBalance_();
+}
+
+/** Client-callable (admin only). Wallet balance for whichever provider is currently selected. */
+function getProviderWalletBalance(token) {
+  requireAdminSession_(token);
+  return getProviderWalletBalance_(getSetting_('DATA_PROVIDER') || 'geosam');
+}
+
+/** Client-callable (admin only). "Test connection" — a safe, read-only check against the currently selected provider. */
+function testProviderConnection(token) {
+  requireAdminSession_(token);
+  var provider = getSetting_('DATA_PROVIDER') || 'geosam';
+  return provider === 'idatagh' ? testIdataghConnection_() : testGeosamConnection_();
 }
 
 // ---------------------------------------------------------------------------
@@ -818,6 +987,18 @@ function generateOrderId_() {
 
 function isValidGhPhone_(phone) {
   return /^0\d{9}$/.test(String(phone || '').trim());
+}
+
+// Google Sheets can silently reinterpret a digit string like "0244000000"
+// as the NUMBER 244000000 (dropping the leading zero) if a cell isn't
+// explicitly formatted as text. That broke order tracking — a customer's
+// correctly-typed phone number would never match the corrupted stored
+// value. This recovers a stripped leading zero on read, so tracking works
+// regardless of how the cell got formatted.
+function normalizePhone_(v) {
+  var digits = String(v == null ? '' : v).replace(/\D/g, '');
+  if (digits.length === 9) digits = '0' + digits;
+  return digits;
 }
 
 /**
@@ -872,7 +1053,8 @@ function submitOrder(payload) {
       ORDER_STATUS.PENDING,
       '',
       '',
-      new Date()
+      new Date(),
+      ''
     ]);
   } finally {
     lock.releaseLock();
@@ -891,8 +1073,10 @@ function submitOrder(payload) {
 function getOrderStatusForCustomer(orderId, phone) {
   var sheet = getSheet_(SHEET_ORDERS, ORDER_HEADERS);
   var orders = sheetRowsToObjects_(sheet, ORDER_HEADERS);
+  var wantedId = String(orderId || '').trim().toUpperCase();
+  var wantedPhone = normalizePhone_(phone);
   var order = orders.filter(function (o) {
-    return o.OrderID === String(orderId).trim() && o.RecipientPhone === String(phone).trim();
+    return String(o.OrderID || '').trim().toUpperCase() === wantedId && normalizePhone_(o.RecipientPhone) === wantedPhone;
   })[0];
   if (!order) throw new Error('No order found with that reference and phone number.');
   return {
@@ -927,8 +1111,8 @@ function getAdminOrders_(statusFilter) {
       id: o.OrderID,
       timestamp: toIsoString_(o.Timestamp),
       customerName: o.CustomerName,
-      recipientPhone: o.RecipientPhone,
-      payerPhone: o.PayerPhone,
+      recipientPhone: normalizePhone_(o.RecipientPhone),
+      payerPhone: normalizePhone_(o.PayerPhone),
       network: o.Network,
       size: o.Size,
       sellingPrice: Number(o.SellingPrice) || 0,
@@ -936,7 +1120,8 @@ function getAdminOrders_(statusFilter) {
       profit: Number(o.Profit) || 0,
       momoRef: o.MoMoRef,
       status: o.Status,
-      geosamOrderId: o.GeosamOrderId,
+      geosamOrderId: o.ProviderRef,
+      provider: o.Provider || 'geosam',
       notes: o.Notes
     };
   });
@@ -958,8 +1143,11 @@ function setOrderStatus_(orderId, status, extra) {
   if (row === -1) throw new Error('Order not found.');
   sheet.getRange(row, ORDER_HEADERS.indexOf('Status') + 1).setValue(status);
   sheet.getRange(row, ORDER_HEADERS.indexOf('UpdatedAt') + 1).setValue(new Date());
-  if (extra && extra.geosamOrderId !== undefined) {
-    sheet.getRange(row, ORDER_HEADERS.indexOf('GeosamOrderId') + 1).setValue(extra.geosamOrderId);
+  if (extra && extra.providerRef !== undefined) {
+    sheet.getRange(row, ORDER_HEADERS.indexOf('ProviderRef') + 1).setValue(extra.providerRef);
+  }
+  if (extra && extra.provider !== undefined) {
+    sheet.getRange(row, ORDER_HEADERS.indexOf('Provider') + 1).setValue(extra.provider);
   }
   if (extra && extra.notes !== undefined) {
     sheet.getRange(row, ORDER_HEADERS.indexOf('Notes') + 1).setValue(extra.notes);
@@ -998,12 +1186,13 @@ function fulfillOrder(token, orderId) {
   order.AmountMB = pkg.AmountMB;
   order.Reference = orderId + '-F' + Utilities.getUuid().split('-')[0].toUpperCase();
 
-  var result = buyGeosamBundle_(order);
+  var provider = getSetting_('DATA_PROVIDER') || 'geosam';
+  var result = buyBundle_(provider, order);
 
   if (result.success) {
-    setOrderStatus_(orderId, ORDER_STATUS.PROCESSING, { geosamOrderId: result.geosamRef, notes: result.message });
+    setOrderStatus_(orderId, ORDER_STATUS.PROCESSING, { providerRef: result.providerRef, notes: result.message, provider: provider });
   } else {
-    setOrderStatus_(orderId, ORDER_STATUS.FAILED, { geosamOrderId: result.geosamRef, notes: result.message });
+    setOrderStatus_(orderId, ORDER_STATUS.FAILED, { providerRef: result.providerRef, notes: result.message, provider: provider });
   }
   return result;
 }
@@ -1023,23 +1212,24 @@ function checkOrderGeosamStatus(token, orderId) {
   var order = {};
   ORDER_HEADERS.forEach(function (h, i) { order[h] = values[i]; });
 
-  if (!order.GeosamOrderId) {
-    throw new Error('This order has not been submitted to Geosam yet.');
+  if (!order.ProviderRef) {
+    throw new Error('This order has not been submitted to a data provider yet.');
   }
+  var provider = order.Provider || 'geosam'; // orders fulfilled before multi-provider support default to geosam
 
-  var tx = checkGeosamTransactionStatus_(order.GeosamOrderId);
+  var tx = checkTransactionStatus_(provider, order.ProviderRef);
   var status = String(tx.status || '').toLowerCase();
 
   if (status === 'completed') {
-    setOrderStatus_(orderId, ORDER_STATUS.DELIVERED, { notes: tx.message || 'Confirmed delivered by Geosam.' });
+    setOrderStatus_(orderId, ORDER_STATUS.DELIVERED, { notes: tx.message || 'Confirmed delivered.' });
     return { status: ORDER_STATUS.DELIVERED, message: tx.message };
   }
   if (status === 'failed' || status === 'error') {
-    setOrderStatus_(orderId, ORDER_STATUS.FAILED, { notes: tx.message || 'Geosam reported this transaction failed.' });
+    setOrderStatus_(orderId, ORDER_STATUS.FAILED, { notes: tx.message || 'Provider reported this transaction failed.' });
     return { status: ORDER_STATUS.FAILED, message: tx.message };
   }
-  setOrderStatus_(orderId, ORDER_STATUS.PROCESSING, { notes: tx.message || ('Geosam status: ' + (tx.status || 'pending')) });
-  return { status: ORDER_STATUS.PROCESSING, message: tx.message || 'Still processing at Geosam — check again shortly.' };
+  setOrderStatus_(orderId, ORDER_STATUS.PROCESSING, { notes: tx.message || ('Provider status: ' + (tx.status || 'pending')) });
+  return { status: ORDER_STATUS.PROCESSING, message: tx.message || 'Still processing — check again shortly.' };
 }
 
 /** Client-callable (admin only). */
@@ -1061,6 +1251,131 @@ function cancelOrder(token, orderId) {
   requireAdminSession_(token);
   setOrderStatus_(orderId, ORDER_STATUS.CANCELLED);
   return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// 8b. AI ASSISTANT (customer-facing chat widget)
+// ---------------------------------------------------------------------------
+// Works out of the box with zero setup: 'mock' mode uses simple keyword
+// matching against your live store settings (pricing, delivery times,
+// payment, WhatsApp contact) so answers are always accurate even without
+// any AI configured. Optionally switch to 'live' mode with a free Gemini
+// API key (https://aistudio.google.com/apikey) for real generative replies.
+// ---------------------------------------------------------------------------
+
+function buildAssistantContext_() {
+  var s = getPublicSettings_();
+  var lines = [];
+  lines.push('Store name: ' + s.storeName);
+  if (s.tagline) lines.push('Tagline: ' + s.tagline);
+  if (s.whatsapp) lines.push('WhatsApp contact: ' + s.whatsapp);
+  if (s.momoNumber) lines.push('Mobile Money payments accepted to: ' + s.momoNumber + (s.momoName ? ' (' + s.momoName + ')' : ''));
+  if (s.banner && s.banner.text) lines.push('Current network/delivery status: ' + s.banner.text);
+  var packages = getStorefrontPackages();
+  NETWORKS.forEach(function (n) {
+    var list = packages[n] || [];
+    if (list.length) {
+      lines.push(n + ' bundles available from ' + s.currency + list[0].price.toFixed(2) + ' (' + list[0].size + ') up to ' + list[list.length - 1].size + '.');
+    }
+  });
+  return lines.join('\n');
+}
+
+var ASSISTANT_FAQ = [
+  { keywords: ['price', 'cost', 'how much', 'rate', 'ghc', 'ghs'], reply: function (ctx) { return 'Here\'s our current pricing:\n' + ctx; } },
+  { keywords: ['deliver', 'how long', 'time', 'fast', 'slow', 'wait'], reply: function (ctx, s) { return (s.banner && s.banner.text) ? s.banner.text : 'Delivery is usually quick after your payment is confirmed.'; } },
+  { keywords: ['pay', 'momo', 'mobile money', 'transaction id'], reply: function (ctx, s) { return s.momoNumber ? ('Send payment to ' + s.momoNumber + (s.momoName ? ' (' + s.momoName + ')' : '') + ', then submit your order with the Transaction ID from your MoMo confirmation SMS.') : 'Choose a bundle on the store and follow the on-screen payment instructions.'; } },
+  { keywords: ['track', 'status of my order', 'where is my order', 'order status'], reply: function () { return 'Tap the search icon at the top of the store to track your order using your order reference and phone number.'; } },
+  { keywords: ['human', 'agent', 'support', 'talk to', 'complain', 'problem', 'issue', 'not working'], reply: function (ctx, s) { return s.whatsapp ? ('I\'ll connect you with a real person — message us on WhatsApp: https://wa.me/' + s.whatsapp) : 'Please use the contact options on the store page to reach us directly.'; } },
+  { keywords: ['hi', 'hello', 'hey', 'good morning', 'good afternoon'], reply: function (ctx, s) { return 'Hi! I\'m the ' + s.storeName + ' assistant. Ask me about pricing, delivery times, payment, or tracking an order.'; } }
+];
+
+function ruleBasedAssistantReply_(message) {
+  var s = getPublicSettings_();
+  var ctx = buildAssistantContext_();
+  var lower = String(message || '').toLowerCase();
+  for (var i = 0; i < ASSISTANT_FAQ.length; i++) {
+    var faq = ASSISTANT_FAQ[i];
+    for (var k = 0; k < faq.keywords.length; k++) {
+      if (lower.indexOf(faq.keywords[k]) !== -1) return faq.reply(ctx, s);
+    }
+  }
+  return 'I can help with pricing, delivery times, payment instructions, and order tracking.' +
+    (s.whatsapp ? (' For anything else, message us on WhatsApp: https://wa.me/' + s.whatsapp) : ' For anything else, please use the contact options on the store.');
+}
+
+function geminiRequest_(systemPrompt, turns) {
+  var key = getSetting_('AI_API_KEY');
+  if (!key) throw new Error('AI API key is not set.');
+  var model = 'gemini-2.0-flash'; // adjust here if Google renames/retires this model
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(key);
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    muteHttpExceptions: true,
+    payload: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: turns
+    })
+  };
+  var response = UrlFetchApp.fetch(url, options);
+  var httpCode = response.getResponseCode();
+  var body = response.getContentText();
+  var parsed = null;
+  try { parsed = JSON.parse(body); } catch (e) { /* leave null */ }
+  if (httpCode < 200 || httpCode >= 300 || !parsed) {
+    throw new Error('AI request failed (HTTP ' + httpCode + '): ' + body.substring(0, 200));
+  }
+  var text = parsed.candidates && parsed.candidates[0] && parsed.candidates[0].content &&
+    parsed.candidates[0].content.parts && parsed.candidates[0].content.parts[0] && parsed.candidates[0].content.parts[0].text;
+  if (!text) throw new Error('AI returned an empty response.');
+  return text.trim();
+}
+
+/**
+ * Client-callable (public). `history` is [{role:'user'|'assistant', text}],
+ * most recent last, used only in Live mode for conversational context.
+ * Always falls back to the rule-based FAQ responder if AI Mode isn't Live
+ * with a valid key, or if the live call fails for any reason — the chat
+ * widget should never just break.
+ */
+function askAssistant(message, history) {
+  message = String(message || '').trim();
+  if (!message) throw new Error('Type a question first.');
+  if (message.length > 500) message = message.substring(0, 500);
+
+  var mode = getSetting_('AI_MODE') || 'mock';
+  if (mode === 'live' && getSetting_('AI_API_KEY')) {
+    try {
+      var systemPrompt =
+        'You are a friendly, concise customer support assistant for "' + getSetting_('STORE_NAME') + '", a Ghanaian data bundle reselling store. ' +
+        'Only answer questions about this store — its bundles, pricing, delivery, and payment. Keep replies under 80 words, no markdown. ' +
+        'Store facts:\n' + buildAssistantContext_();
+      var turns = (history || []).slice(-8).map(function (h) {
+        return { role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(h.text || '').substring(0, 500) }] };
+      });
+      turns.push({ role: 'user', parts: [{ text: message }] });
+      return { reply: geminiRequest_(systemPrompt, turns), ai: true };
+    } catch (err) {
+      return { reply: ruleBasedAssistantReply_(message), ai: false, fallbackReason: err.message };
+    }
+  }
+  return { reply: ruleBasedAssistantReply_(message), ai: false };
+}
+
+/** Client-callable (admin only). "Test connection" for the AI assistant. */
+function testAiConnection(token) {
+  requireAdminSession_(token);
+  var mode = getSetting_('AI_MODE') || 'mock';
+  if (mode !== 'live') {
+    return { success: false, message: 'AI Mode is set to Mock — the assistant is using the built-in FAQ responder. Switch to Live and add a Gemini API key to test it.' };
+  }
+  try {
+    var reply = geminiRequest_('You are a connection test. Reply with exactly: OK', [{ role: 'user', parts: [{ text: 'ping' }] }]);
+    return { success: true, message: 'Connected. Gemini replied: "' + reply + '"' };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
 }
 
 // ---------------------------------------------------------------------------
