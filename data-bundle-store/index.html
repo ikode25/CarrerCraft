@@ -804,21 +804,39 @@
     // ======================================================================
     // ADMIN
     // ======================================================================
+    function handleAdminBootstrap(data) {
+      // google.script.run has occasionally been seen to hand back a bare
+      // null instead of a real error — treat that the same as "not logged
+      // in" rather than crashing on `data.authorized`.
+      if (!data) {
+        clearAdminToken();
+        toast('Could not reach the server — please try logging in again.', 'error');
+        renderLoginForm();
+        return false;
+      }
+      STATE.admin = data;
+      if (data.bootstrapError) {
+        toast('Admin data failed to load: ' + data.bootstrapError, 'error');
+      }
+      if (!data.authorized) {
+        clearAdminToken();
+        renderLoginForm();
+        return false;
+      }
+      applyTheme(data.settings.themePrimary, data.settings.themeAccent);
+      return true;
+    }
+
     function loadAdmin() {
       run('getAdminBootstrap', STATE.adminToken).then(function (data) {
-        STATE.admin = data;
-        if (!data.authorized) { clearAdminToken(); renderLoginForm(); }
-        else { applyTheme(data.settings.themePrimary, data.settings.themeAccent); renderAdminShell(); }
+        if (handleAdminBootstrap(data)) renderAdminShell();
       }).catch(function (err) { renderFatal(err); });
     }
 
     function refreshAdmin() {
       return run('getAdminBootstrap', STATE.adminToken).then(function (data) {
-        if (!data.authorized) { clearAdminToken(); renderLoginForm(); return; }
-        STATE.admin = data;
-        applyTheme(data.settings.themePrimary, data.settings.themeAccent);
-        renderAdminShell();
-      });
+        if (handleAdminBootstrap(data)) renderAdminShell();
+      }).catch(function (err) { renderFatal(err); });
     }
 
     function renderLoginForm() {

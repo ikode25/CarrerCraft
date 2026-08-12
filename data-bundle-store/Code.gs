@@ -43,7 +43,7 @@
 // actually picked up the latest code (Apps Script only serves new code to
 // the live /exec URL after Deploy > Manage deployments > Edit > New version
 // > Deploy — saving the file alone is not enough).
-var APP_VERSION = 'v1.5.0';
+var APP_VERSION = 'v1.6.0';
 
 var SHEET_PACKAGES = 'Packages';
 var SHEET_ORDERS = 'Orders';
@@ -409,6 +409,20 @@ function getAdminPackages(token) {
   return getAdminPackages_();
 }
 
+// google.script.run has been unreliable about returning raw Date objects
+// from server functions — in some cases the whole response silently comes
+// back as null on the client instead of a catchable error. Every
+// client-facing function converts dates to ISO strings before returning.
+function toIsoString_(v) {
+  if (!v) return '';
+  try {
+    var d = (v instanceof Date) ? v : new Date(v);
+    return isNaN(d.getTime()) ? '' : d.toISOString();
+  } catch (e) {
+    return '';
+  }
+}
+
 function getAdminPackages_() {
   return getAllPackages_().map(function (p) {
     var base = Number(p.BasePrice) || 0;
@@ -423,7 +437,7 @@ function getAdminPackages_() {
       sellingPrice: selling,
       profit: selling - base,
       active: p.Active === true || p.Active === 'TRUE',
-      lastUpdated: p.LastUpdated
+      lastUpdated: toIsoString_(p.LastUpdated)
     };
   });
 }
@@ -887,7 +901,7 @@ function getOrderStatusForCustomer(orderId, phone) {
     size: order.Size,
     amount: order.SellingPrice,
     status: order.Status,
-    timestamp: order.Timestamp
+    timestamp: toIsoString_(order.Timestamp)
   };
 }
 
@@ -911,7 +925,7 @@ function getAdminOrders_(statusFilter) {
   return orders.map(function (o) {
     return {
       id: o.OrderID,
-      timestamp: o.Timestamp,
+      timestamp: toIsoString_(o.Timestamp),
       customerName: o.CustomerName,
       recipientPhone: o.RecipientPhone,
       payerPhone: o.PayerPhone,
@@ -1110,15 +1124,24 @@ function getAdminBootstrap(token) {
   if (!isValidAdminSession_(token)) {
     return { authorized: false, appVersion: APP_VERSION };
   }
-  return {
-    authorized: true,
-    appVersion: APP_VERSION,
-    settings: getAdminSettings_(),
-    packages: getAdminPackages_(),
-    orders: getAdminOrders_(),
-    stats: getDashboardStats_(),
-    carousel: getAdminCarousel_(),
-    networks: NETWORKS,
-    orderStatuses: ORDER_STATUS
-  };
+  // Wrapped defensively: google.script.run has been known to hand the
+  // client a bare `null` instead of a catchable error if anything in this
+  // payload fails to serialize cleanly. Returning a real object with a
+  // readable `bootstrapError` here — instead of letting an exception
+  // propagate — means the admin UI always has something to react to.
+  try {
+    return {
+      authorized: true,
+      appVersion: APP_VERSION,
+      settings: getAdminSettings_(),
+      packages: getAdminPackages_(),
+      orders: getAdminOrders_(),
+      stats: getDashboardStats_(),
+      carousel: getAdminCarousel_(),
+      networks: NETWORKS,
+      orderStatuses: ORDER_STATUS
+    };
+  } catch (err) {
+    return { authorized: false, appVersion: APP_VERSION, bootstrapError: err.message };
+  }
 }

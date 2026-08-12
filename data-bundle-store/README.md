@@ -92,6 +92,16 @@ Script editor: **Project Settings → Script properties**, delete
 you also forgot the username), then reload `?page=admin` — the password
 resets to `admin123` (and the username to `admin`, if you cleared it).
 
+**If login succeeds but the dashboard itself then shows an error** ("Cannot
+read properties of null" or similar): this was a real bug in earlier
+versions — `google.script.run` can unreliably hand back `null` instead of a
+proper error when a server function returns a raw `Date` object. All
+timestamps are now converted to strings before being sent to the browser,
+and `getAdminBootstrap()` is wrapped so any future server-side hiccup
+reports a readable message (toast in the corner) instead of crashing the
+page — as of `v1.6.0`, seeing that crash means you're still on an older
+deployment (see the redeploy checklist above).
+
 Bookmark the `?page=admin` URL — that's your private dashboard.
 
 ## 5. Connect Geosam
