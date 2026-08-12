@@ -3,11 +3,7 @@
 A self-serve storefront for reselling **MTN**, **Telecel**, and **AirtelTigo** data
 bundles, plus a private admin portal (username + password login) where you
 set your own selling prices, fulfill orders through **Geosam or iDataGH**
-(switch instantly if one is down), and track your profit per order — with
-room to sell anything else alongside it (picture frames, installations,
-custom software projects, photography, ...) as additional business tabs you
-manage from the same admin portal. See [7g](#7g-other-businesses-picture-frames-installs-custom-projects-photography-)
-below.
+(switch instantly if one is down), and track your profit per order.
 
 - `Code.gs` — backend: Google Sheets as the database, all server logic, and
   the Geosam + iDataGH API adapters.
@@ -313,34 +309,6 @@ in `Code.gs`, which buckets delivered/processing/paid orders by day for the
 last 14 days. It fills in automatically as orders come through; a new store
 just shows a flat line at zero until then.
 
-## 7g. Other businesses (picture frames, installs, custom projects, photography, ...)
-
-Data bundles don't have to be the only thing you sell through this store.
-**Admin → Businesses** lets you add any number of additional businesses —
-each one shows up as its own tab on the storefront, next to Data Bundles:
-
-- **Add a business** with a name, an optional tagline, and an icon (pick
-  from the same icon set used everywhere else in the app).
-- Each business is a simple list of **items** ("offerings") you manage from
-  **Manage items** on that business's row: a title, optional description,
-  optional photo, and a price — or leave the price at 0 to show
-  **"Contact for pricing"** instead of a Buy button.
-- Toggle a business (or a single item) **Visible/Hidden** any time without
-  deleting it — hidden ones simply don't appear on the storefront tab bar.
-- The built-in **Data Bundles** business can be hidden but not deleted or
-  renamed here — it keeps using the dedicated Pricing/Orders/API Settings
-  tabs, since it's the only one wired up to Geosam/iDataGH.
-- Any other business can be fully deleted (including its items and photos).
-
-On the storefront, a customer clicks a business tab, sees a card grid of
-that business's items, and clicks **Order Now** (items with a price — same
-MoMo payment + Transaction ID flow as data bundles) or **Get a Quote**
-(items with no price — a simple name/phone/message inquiry form instead).
-Either way it lands in **Admin → Service Orders**: a single inbox for every
-non-data-bundle business, filterable by business and status, where you
-update each request through New → Contacted → In Progress → Completed (or
-Cancelled) as you follow up.
-
 ## 8. Icons & system color
 
 Every icon in the app (nav, buttons, stat cards, status dots) is a small
@@ -379,10 +347,6 @@ instead of waiting for the background revalidation.
   (SHA-256), never in plain text.
 - The storefront never exposes base price or profit — only your selling
   price.
-- Businesses/items/service-orders share the same admin-session gate and
-  active/visible checks as data bundles — a hidden or deleted business's
-  items can't be ordered even by calling the server function directly, and
-  the built-in Data Bundles business can't be deleted through this UI.
 - The web app is deployed with `X-Frame-Options: ALLOWALL`, so you can embed
   either the storefront or admin URL in an `<iframe>` the same way this
   repo's root `index.html` embeds another Apps Script project, if you want a

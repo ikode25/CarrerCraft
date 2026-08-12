@@ -238,60 +238,6 @@
       .trust-chip{font-size:11.5px;padding:7px 11px;}
     }
 
-    /* ---------- Business tabs ---------- */
-    .biz-tabs{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 14px;margin:-6px 0 4px;-webkit-overflow-scrolling:touch;}
-    .biz-tabs::-webkit-scrollbar{display:none;}
-    .biz-tab{
-      flex-shrink:0;padding:10px 16px;border-radius:12px;font-weight:700;font-size:13.5px;border:1.5px solid var(--border);
-      background:#fff;color:var(--muted);display:inline-flex;align-items:center;gap:7px;transition:.15s;
-    }
-    .biz-tab.active{background:var(--navy);color:#fff;border-color:var(--navy);}
-    .biz-tab.active .ico{color:var(--gold);}
-
-    /* ---------- Offering grid (generic businesses) ---------- */
-    .offering-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-bottom:36px;}
-    .offering-card{background:#fff;border-radius:16px;overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--border);display:flex;flex-direction:column;}
-    .offering-card:hover{box-shadow:var(--shadow-lg);}
-    .offering-img{width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--bg);display:block;}
-    .offering-img-placeholder{width:100%;aspect-ratio:4/3;background:linear-gradient(135deg,var(--navy-2),var(--navy));color:rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;}
-    .offering-body{padding:14px 16px;display:flex;flex-direction:column;gap:8px;flex:1;}
-    .offering-body b{font-size:14.5px;color:var(--navy);}
-    .offering-body p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.5;flex:1;}
-    .offering-price{font-size:16px;font-weight:800;color:var(--gold-2);}
-    .offering-price.quote{font-size:13px;color:var(--muted);font-weight:700;}
-
-    /* ---------- Admin: businesses & offerings management ---------- */
-    .icon-picker{display:flex;flex-wrap:wrap;gap:8px;}
-    .icon-pick{
-      width:38px;height:38px;border-radius:10px;border:1.5px solid var(--border);background:#fff;color:var(--muted);
-      display:flex;align-items:center;justify-content:center;transition:.15s;
-    }
-    .icon-pick.active{background:var(--navy);color:#fff;border-color:var(--navy);}
-    .biz-row{
-      display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:14px;
-      background:#fff;margin-bottom:10px;flex-wrap:wrap;
-    }
-    .biz-row-icon{
-      width:40px;height:40px;border-radius:11px;background:var(--navy);color:#fff;display:flex;align-items:center;
-      justify-content:center;flex-shrink:0;
-    }
-    .biz-row-info{flex:1;min-width:140px;}
-    .biz-row-info b{color:var(--navy);font-size:14.5px;}
-    .biz-row-info div{font-size:12px;color:var(--muted);margin-top:2px;}
-    .biz-row.inactive{opacity:.55;}
-    .offering-admin-row{
-      display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;
-      background:#fff;margin-bottom:8px;flex-wrap:wrap;
-    }
-    .offering-admin-thumb{width:44px;height:44px;border-radius:9px;object-fit:cover;background:var(--bg);flex-shrink:0;}
-    .offering-admin-thumb-placeholder{
-      width:44px;height:44px;border-radius:9px;background:var(--bg);color:var(--muted);display:flex;
-      align-items:center;justify-content:center;flex-shrink:0;
-    }
-    .offering-admin-info{flex:1;min-width:140px;}
-    .offering-admin-info b{font-size:13.5px;color:var(--navy);}
-    .offering-admin-info div{font-size:11.5px;color:var(--muted);margin-top:2px;}
-
     /* ---------- Network tabs ---------- */
     .net-tabs{display:flex;gap:10px;margin:-24px 0 22px;position:relative;z-index:2;flex-wrap:wrap;}
     .net-tab{
@@ -518,12 +464,7 @@
       chevronRight: '<polyline points="9 18 15 12 9 6"></polyline>',
       bot: '<rect x="3" y="10" width="18" height="10" rx="3"></rect><circle cx="8.5" cy="15" r="1.3" fill="currentColor" stroke="none"></circle><circle cx="15.5" cy="15" r="1.3" fill="currentColor" stroke="none"></circle><path d="M12 10V6"></path><circle cx="12" cy="4.5" r="1.5"></circle><path d="M3 14H1"></path><path d="M23 14h-2"></path>',
       send: '<line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>',
-      copy: '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>',
-      camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>',
-      bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path>',
-      code: '<polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>',
-      grid: '<rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>',
-      inbox: '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>'
+      copy: '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>'
     };
     function icon(name, size) {
       size = size || 20;
@@ -577,11 +518,7 @@
       carouselIndex: 0,
       carouselTimer: null,
       chatHistory: [],
-      chatOpen: false,
-      currentBusinessId: '',
-      businessOfferings: {},
-      adminBusinessId: '',
-      serviceOrderFilter: { businessId: 'All', status: 'All' }
+      chatOpen: false
     };
     try { STATE.adminToken = localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { STATE.adminToken = ''; }
 
@@ -749,20 +686,11 @@
 
     function renderStore() {
       var s = STATE.store.settings;
-      var businesses = STATE.store.businesses || [];
-      // Keep whatever business tab was selected if it still exists/is
-      // active; otherwise default to Data Bundles (or the first tab).
-      if (!businesses.some(function (b) { return b.id === STATE.currentBusinessId; })) {
-        STATE.currentBusinessId = businesses.some(function (b) { return b.id === STATE.store.databundlesBusinessId; })
-          ? STATE.store.databundlesBusinessId
-          : (businesses[0] ? businesses[0].id : '');
-      }
-
       var app = $('#app');
       app.innerHTML =
         '<nav class="nav">' +
           '<div class="brand"><div class="logo">' + (s.logoUrl ? '<img src="' + esc(s.logoUrl) + '" alt="">' : icon('signal', 19)) + '</div><div>' + esc(s.storeName) +
-            '<small>' + esc(s.tagline ? s.tagline.substring(0, 40) : 'Welcome') + '</small></div></div>' +
+            '<small>Data bundles, delivered fast</small></div></div>' +
           '<div class="nav-actions">' +
             '<button class="icon-btn" id="refresh-btn" title="Refresh">' + icon('refresh') + '</button>' +
             '<button class="icon-btn" id="track-btn" title="Track my order">' + icon('search') + '</button>' +
@@ -772,7 +700,7 @@
         renderBannerHtml(s.banner) +
         '<div id="carousel-wrap"></div>' +
         '<div class="hero"><div class="container">' +
-          '<h1>Welcome to ' + esc(s.storeName) + '</h1>' +
+          '<h1>Buy data bundles in seconds</h1>' +
           '<p>' + esc(s.tagline) + '</p>' +
           '<div class="trust-row">' +
             '<div class="trust-chip">' + icon('zap', 14) + ' Fast delivery</div>' +
@@ -781,15 +709,15 @@
           '</div>' +
         '</div></div>' +
         '<div class="container">' +
-          '<div class="biz-tabs" id="biz-tabs"></div>' +
-          '<div id="business-content"></div>' +
+          '<div class="net-tabs" id="net-tabs"></div>' +
+          '<div id="pkg-grid" class="pkg-grid"></div>' +
         '</div>' +
         '<div class="why-us"><div class="container">' +
           '<h2>Why choose ' + esc(s.storeName) + '</h2>' +
           '<div class="why-us-grid">' +
-            '<div class="why-us-card"><div class="why-us-icon">' + icon('zap', 22) + '</div><b>Fast Delivery</b><p>Orders and bundles are handled quickly once payment is confirmed.</p></div>' +
+            '<div class="why-us-card"><div class="why-us-icon">' + icon('zap', 22) + '</div><b>Fast Delivery</b><p>Bundles land on your phone within minutes of payment being confirmed.</p></div>' +
             '<div class="why-us-card"><div class="why-us-icon">' + icon('lock', 22) + '</div><b>Secure Payment</b><p>Pay directly by Mobile Money — no card details, no middlemen.</p></div>' +
-            '<div class="why-us-card"><div class="why-us-icon">' + icon('tag', 22) + '</div><b>Best Local Prices</b><p>Competitive rates across everything we offer, every day.</p></div>' +
+            '<div class="why-us-card"><div class="why-us-icon">' + icon('tag', 22) + '</div><b>Best Local Prices</b><p>Competitive rates across MTN, Telecel, and AirtelTigo, every day.</p></div>' +
             '<div class="why-us-card"><div class="why-us-icon">' + icon('chat', 22) + '</div><b>Real Support</b><p>Chat with our assistant any time, or message us directly on WhatsApp.</p></div>' +
           '</div>' +
         '</div></div>' +
@@ -804,166 +732,13 @@
         '<div id="chat-widget-wrap"></div>';
 
       renderCarousel(STATE.store.carousel || []);
-      renderBusinessTabs();
-      renderBusinessContent();
+      renderNetworkTabs();
+      renderPkgGrid();
 
       $('#agent-login-btn').addEventListener('click', function () { navigateTo('admin'); });
       $('#track-btn').addEventListener('click', openTrackModal);
       $('#refresh-btn').addEventListener('click', function () { refreshStore($('#refresh-btn')); });
       $('#chat-fab').addEventListener('click', openChatWidget);
-    }
-
-    // ---------------- Business tabs (storefront) ----------------
-    function renderBusinessTabs() {
-      var wrap = $('#biz-tabs');
-      var businesses = STATE.store.businesses || [];
-      if (businesses.length <= 1) { wrap.style.display = 'none'; return; }
-      wrap.style.display = 'flex';
-      wrap.innerHTML = businesses.map(function (b) {
-        return '<button class="biz-tab' + (b.id === STATE.currentBusinessId ? ' active' : '') + '" data-id="' + esc(b.id) + '">' +
-          icon(b.icon || 'tag', 15) + ' ' + esc(b.name) + '</button>';
-      }).join('');
-      $$all('.biz-tab', wrap).forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          STATE.currentBusinessId = btn.dataset.id;
-          renderBusinessTabs();
-          renderBusinessContent();
-        });
-      });
-    }
-
-    function currentBusiness_() {
-      return (STATE.store.businesses || []).filter(function (b) { return b.id === STATE.currentBusinessId; })[0] || null;
-    }
-
-    function renderBusinessContent() {
-      var target = $('#business-content');
-      var business = currentBusiness_();
-      if (!business) { target.innerHTML = '<div class="empty-state"><div class="big-icon">' + icon('tag', 32) + '</div>Nothing to show yet.</div>'; return; }
-
-      if (business.type === 'databundles') {
-        target.innerHTML = '<div class="net-tabs" id="net-tabs"></div><div id="pkg-grid" class="pkg-grid"></div>';
-        renderNetworkTabs();
-        renderPkgGrid();
-        return;
-      }
-
-      target.innerHTML = business.tagline ? '<p class="section-sub" style="margin:-4px 0 16px;">' + esc(business.tagline) + '</p>' : '';
-      target.innerHTML += '<div id="offering-grid" class="offering-grid"><div class="empty-state"><div class="spinner" style="margin:0 auto;border-color:rgba(15,39,71,.15);border-top-color:var(--navy);"></div></div></div>';
-      loadOfferings(business);
-    }
-
-    var OFFERINGS_CACHE_KEY_PREFIX = 'dbs_offerings_';
-
-    function loadOfferings(business) {
-      var cacheKey = OFFERINGS_CACHE_KEY_PREFIX + business.id;
-      var cached = cacheGet(cacheKey);
-      if (cached && STATE.currentBusinessId === business.id) renderOfferingGrid(business, cached);
-      run('getBusinessOfferings', business.id).then(function (offerings) {
-        cacheSet(cacheKey, offerings);
-        if (STATE.currentBusinessId === business.id) renderOfferingGrid(business, offerings);
-      }).catch(function (err) {
-        if (STATE.currentBusinessId === business.id && !cached) {
-          var grid = $('#offering-grid');
-          if (grid) grid.innerHTML = '<div class="empty-state"><div class="big-icon">' + icon('alertTriangle', 32) + '</div>' + esc(err.message || err) + '</div>';
-        }
-      });
-    }
-
-    function renderOfferingGrid(business, offerings) {
-      var grid = $('#offering-grid');
-      if (!grid) return;
-      if (!offerings.length) {
-        grid.innerHTML = '<div class="empty-state"><div class="big-icon">' + icon('tag', 32) + '</div>Nothing listed here yet — check back soon!</div>';
-        return;
-      }
-      var settings = STATE.store.settings;
-      grid.innerHTML = offerings.map(function (o) {
-        return '<div class="offering-card" data-id="' + esc(o.id) + '">' +
-          (o.imageUrl ? '<img class="offering-img" src="' + esc(o.imageUrl) + '" alt="' + esc(o.title) + '">' : '<div class="offering-img-placeholder">' + icon(business.icon || 'tag', 34) + '</div>') +
-          '<div class="offering-body">' +
-            '<b>' + esc(o.title) + '</b>' +
-            (o.description ? '<p>' + esc(o.description) + '</p>' : '') +
-            '<div class="' + (o.price > 0 ? 'offering-price' : 'offering-price quote') + '">' + (o.price > 0 ? money(settings, o.price) : 'Contact for pricing') + '</div>' +
-            '<button class="btn btn-navy btn-block btn-sm">' + (o.price > 0 ? 'Order Now' : 'Get a Quote') + '</button>' +
-          '</div>' +
-        '</div>';
-      }).join('');
-      $$all('.offering-card', grid).forEach(function (card) {
-        var offering = offerings.filter(function (o) { return o.id === card.dataset.id; })[0];
-        card.querySelector('button').addEventListener('click', function () { openServiceOrderModal(business, offering); });
-      });
-    }
-
-    function openServiceOrderModal(business, offering) {
-      var s = STATE.store.settings;
-      var hasPrice = offering.price > 0;
-      var modal = el(
-        '<div class="modal">' +
-          '<div class="modal-head"><h3>' + esc(offering.title) + '</h3><button class="modal-close">' + icon('x', 16) + '</button></div>' +
-          (hasPrice ?
-            '<div class="pay-box">' +
-              '<div style="margin-bottom:6px;"><strong>Step 1 — Pay via Mobile Money</strong></div>' +
-              (s.momoNumber ?
-                '<div class="pay-row"><span>Send to</span><b>' + esc(s.momoNumber) + ' <button type="button" class="copy-btn" id="copy-momo-btn" title="Copy number">' + icon('copy', 13) + '</button></b></div>' +
-                '<div class="pay-row"><span>Name on MoMo</span><b>' + esc(s.momoName || '—') + '</b></div>' +
-                '<div class="pay-row"><span>Amount</span><b>' + money(s, offering.price) + '</b></div>'
-                : '<div class="hint">The store owner hasn\'t added MoMo details yet — contact them via WhatsApp.</div>') +
-            '</div>'
-            : '<p class="section-sub" style="margin-top:-4px;">Tell us what you need and we\'ll get back to you with pricing.</p>') +
-          '<div style="margin-bottom:10px;"><strong>' + (hasPrice ? 'Step 2 — Confirm your order' : 'Your details') + '</strong></div>' +
-          '<form id="service-order-form">' +
-            '<div class="field"><label>Your name</label><input required name="customerName" placeholder="e.g. Ama Boateng"></div>' +
-            '<div class="field"><label>Phone number</label><input required name="phone" placeholder="0244000000"></div>' +
-            (hasPrice ?
-              '<div class="field"><label>Transaction ID</label><input required name="momoRef" placeholder="e.g. the ID from your Mobile Money confirmation SMS">' +
-                '<div class="hint">Required so we can confirm your payment.</div></div>'
-              : '<div class="field"><label>What do you need?</label><textarea required name="message" rows="3" placeholder="Tell us the details — size, quantity, location, dates, etc."></textarea></div>') +
-            '<button type="submit" class="btn btn-gold btn-block">' + (hasPrice ? 'Submit order — ' + money(s, offering.price) : 'Send request') + '</button>' +
-          '</form>' +
-        '</div>'
-      );
-      var overlay = openModal(modal);
-      modal.querySelector('.modal-close').addEventListener('click', function () { overlay.remove(); });
-      var copyBtn = modal.querySelector('#copy-momo-btn');
-      if (copyBtn) copyBtn.addEventListener('click', function () { copyToClipboard(s.momoNumber); });
-      modal.querySelector('#service-order-form').addEventListener('submit', function (e) {
-        e.preventDefault();
-        var fd = new FormData(e.target);
-        var payload = { businessId: business.id, offeringId: offering.id };
-        fd.forEach(function (v, k) { payload[k] = v; });
-        var btn = e.target.querySelector('button[type="submit"]');
-        setBusy(btn, true, 'Submitting…');
-        run('submitServiceOrder', payload).then(function (res) {
-          overlay.remove();
-          showServiceOrderSuccess(res);
-        }).catch(function (err) {
-          setBusy(btn, false);
-          toast(err.message || String(err), 'error');
-        });
-      });
-    }
-
-    function showServiceOrderSuccess(res) {
-      var s = STATE.store.settings;
-      var waMsg = encodeURIComponent('Hi, this is about my request ' + res.orderId + ' (' + res.offeringTitle + (res.price > 0 ? ', ' + money(s, res.price) : '') + ').');
-      var modal = el(
-        '<div class="modal">' +
-          '<div class="success-panel">' +
-            '<div class="success-check">' + icon('checkCircle', 30) + '</div>' +
-            '<h3 style="margin:0;color:var(--navy);">' + (res.price > 0 ? 'Order received!' : 'Request sent!') + '</h3>' +
-            '<p class="muted" style="font-size:13.5px;">Show this reference if you need to follow up.</p>' +
-            '<div class="order-ref">' + esc(res.orderId) + '</div>' +
-            '<p class="muted" style="font-size:13.5px;">' + esc(res.businessName) + (res.offeringTitle ? ' — ' + esc(res.offeringTitle) : '') + (res.price > 0 ? '<br>' + money(s, res.price) : '') + '</p>' +
-            (s.whatsapp ?
-              '<a class="btn btn-gold btn-block" style="margin-top:14px;" target="_blank" href="https://wa.me/' + esc(waNumber(s.whatsapp)) + '?text=' + waMsg + '">' + icon('chat', 16) + ' Notify us on WhatsApp</a>'
-              : '') +
-            '<button class="btn btn-outline btn-block" style="margin-top:10px;" id="close-success">Done</button>' +
-          '</div>' +
-        '</div>'
-      );
-      var overlay = openModal(modal);
-      modal.querySelector('#close-success').addEventListener('click', function () { overlay.remove(); });
     }
 
     // ---------------- Carousel ----------------
@@ -1324,8 +1099,6 @@
       { id: 'dashboard', label: 'Dashboard', icon: 'pieChart' },
       { id: 'orders', label: 'Orders', icon: 'fileText' },
       { id: 'pricing', label: 'Pricing', icon: 'tag' },
-      { id: 'businesses', label: 'Businesses', icon: 'grid' },
-      { id: 'serviceorders', label: 'Service Orders', icon: 'inbox' },
       { id: 'carousel', label: 'Carousel', icon: 'image' },
       { id: 'setup', label: 'Store Setup', icon: 'home' },
       { id: 'api', label: 'API Settings', icon: 'database' },
@@ -1386,8 +1159,6 @@
       if (STATE.adminTab === 'dashboard') return renderDashboardTab(target);
       if (STATE.adminTab === 'orders') return renderOrdersTab(target);
       if (STATE.adminTab === 'pricing') return renderPricingTab(target);
-      if (STATE.adminTab === 'businesses') return renderBusinessesTab(target);
-      if (STATE.adminTab === 'serviceorders') return renderServiceOrdersTab(target);
       if (STATE.adminTab === 'carousel') return renderCarouselTab(target);
       if (STATE.adminTab === 'setup') return renderSetupTab(target);
       if (STATE.adminTab === 'api') return renderApiTab(target);
@@ -1656,352 +1427,6 @@
           toast('Package added.', 'success');
           refreshAdmin();
         }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
-      });
-    }
-
-    // ---------------- Businesses & Offerings ----------------
-    var BUSINESS_ICON_CHOICES = ['tag', 'camera', 'bell', 'code', 'image', 'wallet', 'database', 'zap', 'droplet', 'megaphone', 'signal', 'grid'];
-
-    function renderIconPicker(container, selected, onPick) {
-      container.innerHTML = BUSINESS_ICON_CHOICES.map(function (name) {
-        return '<button type="button" class="icon-pick' + (name === selected ? ' active' : '') + '" data-icon="' + name + '" title="' + name + '">' + icon(name, 17) + '</button>';
-      }).join('');
-      $$all('.icon-pick', container).forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          $$all('.icon-pick', container).forEach(function (b) { b.classList.remove('active'); });
-          btn.classList.add('active');
-          onPick(btn.dataset.icon);
-        });
-      });
-    }
-
-    function renderBusinessesTab(target) {
-      var businesses = STATE.admin.businesses || [];
-      target.innerHTML =
-        '<div class="section-title">Businesses</div>' +
-        '<p class="section-sub">Each active business becomes a tab on your storefront. "Data Bundles" is built in and keeps using the Pricing/Orders tabs — everything else here is a simple list of items customers can order or request a quote for.</p>' +
-        '<div class="card">' +
-          '<div class="section-title" style="font-size:16px;">Add a business</div>' +
-          '<form id="add-biz-form">' +
-            '<div class="form-grid">' +
-              '<div class="field"><label>Name</label><input required name="name" placeholder="e.g. Picture Frames"></div>' +
-              '<div class="field"><label>Tagline (optional)</label><input name="tagline" placeholder="e.g. Custom frames for every occasion"></div>' +
-            '</div>' +
-            '<div class="field"><label>Icon</label><div class="icon-picker" id="add-biz-icon-picker"></div></div>' +
-            '<button type="submit" class="btn btn-navy">' + icon('plus', 14) + ' Add business</button>' +
-          '</form>' +
-        '</div>' +
-        '<div id="biz-list"></div>' +
-        '<div id="offerings-panel"></div>';
-
-      var addIcon = 'tag';
-      renderIconPicker($('#add-biz-icon-picker'), addIcon, function (name) { addIcon = name; });
-
-      $('#add-biz-form').addEventListener('submit', function (e) {
-        e.preventDefault();
-        var fd = new FormData(e.target);
-        var payload = { icon: addIcon }; fd.forEach(function (v, k) { payload[k] = v; });
-        var btn = e.target.querySelector('button[type="submit"]');
-        setBusy(btn, true, 'Adding…');
-        runAdmin('addBusiness', payload).then(function (res) {
-          toast('Business added.', 'success');
-          STATE.adminBusinessId = res.id;
-          refreshAdmin();
-        }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
-      });
-
-      renderBusinessList();
-      if (STATE.adminBusinessId && businesses.some(function (b) { return b.id === STATE.adminBusinessId; })) {
-        renderOfferingsPanel();
-      }
-    }
-
-    function renderBusinessList() {
-      var wrap = $('#biz-list');
-      var businesses = STATE.admin.businesses || [];
-      if (!wrap) return;
-      if (!businesses.length) { wrap.innerHTML = ''; return; }
-      wrap.innerHTML = businesses.map(function (b) {
-        return '<div class="biz-row' + (b.active ? '' : ' inactive') + '" data-id="' + esc(b.id) + '">' +
-          '<div class="biz-row-icon">' + icon(b.icon || 'tag', 19) + '</div>' +
-          '<div class="biz-row-info"><b>' + esc(b.name) + '</b>' + (b.tagline ? '<div>' + esc(b.tagline) + '</div>' : '') + (b.builtin ? '<div style="opacity:.6;">Built-in</div>' : '') + '</div>' +
-          '<div class="row-actions">' +
-            (b.type !== 'databundles' ? '<button class="btn btn-outline btn-sm" data-action="manage">' + icon('grid', 14) + ' ' + (STATE.adminBusinessId === b.id ? 'Hide items' : 'Manage items') + '</button>' : '') +
-            '<button class="btn btn-outline btn-sm" data-action="edit">Edit</button>' +
-            '<label class="switch"><input type="checkbox" data-action="toggle" ' + (b.active ? 'checked' : '') + '> ' + (b.active ? 'Visible' : 'Hidden') + '</label>' +
-            (b.builtin ? '' : '<button class="btn btn-danger btn-sm" data-action="delete">' + icon('trash', 14) + '</button>') +
-          '</div>' +
-        '</div>';
-      }).join('');
-
-      $$all('.biz-row', wrap).forEach(function (row) {
-        var id = row.dataset.id;
-        var business = businesses.filter(function (b) { return b.id === id; })[0];
-        var manageBtn = row.querySelector('[data-action="manage"]');
-        if (manageBtn) manageBtn.addEventListener('click', function () {
-          STATE.adminBusinessId = STATE.adminBusinessId === id ? '' : id;
-          renderBusinessList();
-          renderOfferingsPanel();
-        });
-        row.querySelector('[data-action="edit"]').addEventListener('click', function () { openEditBusinessModal(business); });
-        row.querySelector('[data-action="toggle"]').addEventListener('change', function (e) {
-          runAdmin('toggleBusinessActive', id, e.target.checked).then(function () { toast('Updated.', 'success'); refreshAdmin(); })
-            .catch(function (err) { toast(err.message || String(err), 'error'); refreshAdmin(); });
-        });
-        var deleteBtn = row.querySelector('[data-action="delete"]');
-        if (deleteBtn) deleteBtn.addEventListener('click', function () {
-          if (!confirm('Delete "' + business.name + '" and all of its items? This can\'t be undone.')) return;
-          runAdmin('deleteBusiness', id).then(function () {
-            if (STATE.adminBusinessId === id) STATE.adminBusinessId = '';
-            toast('Business deleted.', 'success');
-            refreshAdmin();
-          }).catch(function (err) { toast(err.message || String(err), 'error'); });
-        });
-      });
-    }
-
-    function openEditBusinessModal(business) {
-      var modal = el(
-        '<div class="modal">' +
-          '<div class="modal-head"><h3>Edit business</h3><button class="modal-close">' + icon('x', 16) + '</button></div>' +
-          '<form id="edit-biz-form">' +
-            '<div class="field"><label>Name</label><input required name="name" value="' + esc(business.name) + '"></div>' +
-            '<div class="field"><label>Tagline (optional)</label><input name="tagline" value="' + esc(business.tagline || '') + '"></div>' +
-            '<div class="field"><label>Icon</label><div class="icon-picker" id="edit-biz-icon-picker"></div></div>' +
-            '<button type="submit" class="btn btn-navy btn-block">Save changes</button>' +
-          '</form>' +
-        '</div>'
-      );
-      var overlay = openModal(modal);
-      modal.querySelector('.modal-close').addEventListener('click', function () { overlay.remove(); });
-      var editIcon = business.icon || 'tag';
-      renderIconPicker(modal.querySelector('#edit-biz-icon-picker'), editIcon, function (name) { editIcon = name; });
-      modal.querySelector('#edit-biz-form').addEventListener('submit', function (e) {
-        e.preventDefault();
-        var fd = new FormData(e.target);
-        var payload = { icon: editIcon }; fd.forEach(function (v, k) { payload[k] = v; });
-        var btn = e.target.querySelector('button[type="submit"]');
-        setBusy(btn, true, 'Saving…');
-        runAdmin('updateBusiness', business.id, payload).then(function () {
-          overlay.remove();
-          toast('Business updated.', 'success');
-          refreshAdmin();
-        }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
-      });
-    }
-
-    function loadAdminOfferings(businessId) {
-      runAdmin('getAdminOfferings', businessId).then(function (offerings) {
-        STATE.businessOfferings[businessId] = offerings;
-        if (STATE.adminBusinessId === businessId) renderOfferingsList();
-      }).catch(function (err) {
-        if (STATE.adminBusinessId === businessId) {
-          var list = $('#offerings-list');
-          if (list) list.innerHTML = '<div class="empty-state"><div class="big-icon">' + icon('alertTriangle', 28) + '</div>' + esc(err.message || err) + '</div>';
-        }
-      });
-    }
-
-    function renderOfferingsPanel() {
-      var panel = $('#offerings-panel');
-      if (!panel) return;
-      var businessId = STATE.adminBusinessId;
-      if (!businessId) { panel.innerHTML = ''; return; }
-      var business = (STATE.admin.businesses || []).filter(function (b) { return b.id === businessId; })[0];
-      if (!business) { panel.innerHTML = ''; return; }
-
-      panel.innerHTML =
-        '<div class="section-title" style="margin-top:26px;">' + icon(business.icon || 'tag', 18) + ' ' + esc(business.name) + ' — Items</div>' +
-        '<div class="card">' +
-          '<div class="section-title" style="font-size:15.5px;">Add an item</div>' +
-          '<form id="add-offering-form">' +
-            '<div class="form-grid">' +
-              '<div class="field"><label>Title</label><input required name="title" placeholder="e.g. A4 Wooden Photo Frame"></div>' +
-              '<div class="field"><label>Price (leave 0 for "Contact for pricing")</label><input type="number" step="0.01" name="price" placeholder="0.00"></div>' +
-            '</div>' +
-            '<div class="field"><label>Description (optional)</label><textarea name="description" rows="2" placeholder="Short description customers will see"></textarea></div>' +
-            '<div class="field"><label>Photo (optional)</label><input type="file" accept="image/*" name="file" id="offering-file-input"></div>' +
-            '<button type="submit" class="btn btn-navy">' + icon('plus', 14) + ' Add item</button>' +
-          '</form>' +
-        '</div>' +
-        '<div id="offerings-list"><div class="empty-state"><div class="spinner" style="margin:0 auto;border-color:rgba(15,39,71,.15);border-top-color:var(--navy);"></div></div></div>';
-
-      panel.querySelector('#add-offering-form').addEventListener('submit', function (e) {
-        e.preventDefault();
-        var fd = new FormData(e.target);
-        var payload = { businessId: businessId };
-        fd.forEach(function (v, k) { if (k !== 'file') payload[k] = v; });
-        var btn = e.target.querySelector('button[type="submit"]');
-        var fileInput = panel.querySelector('#offering-file-input');
-        var file = fileInput.files && fileInput.files[0];
-
-        function submit() {
-          setBusy(btn, true, 'Adding…');
-          runAdmin('addOffering', payload).then(function () {
-            toast('Item added.', 'success');
-            e.target.reset();
-            setBusy(btn, false);
-            loadAdminOfferings(businessId);
-          }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
-        }
-
-        if (file) {
-          var reader = new FileReader();
-          reader.onload = function () { payload.dataUrl = reader.result; payload.fileName = file.name; submit(); };
-          reader.onerror = function () { toast('Could not read that file. Please try another image.', 'error'); };
-          reader.readAsDataURL(file);
-        } else {
-          submit();
-        }
-      });
-
-      var cached = STATE.businessOfferings[businessId];
-      if (cached) renderOfferingsList();
-      loadAdminOfferings(businessId);
-    }
-
-    function renderOfferingsList() {
-      var list = $('#offerings-list');
-      if (!list) return;
-      var businessId = STATE.adminBusinessId;
-      var offerings = STATE.businessOfferings[businessId] || [];
-      if (!offerings.length) {
-        list.innerHTML = '<div class="empty-state"><div class="big-icon">' + icon('tag', 28) + '</div>No items yet — add one above.</div>';
-        return;
-      }
-      list.innerHTML = offerings.map(function (o) {
-        return '<div class="offering-admin-row" data-id="' + esc(o.id) + '">' +
-          (o.imageUrl ? '<img class="offering-admin-thumb" src="' + esc(o.imageUrl) + '" alt="">' : '<div class="offering-admin-thumb-placeholder">' + icon('image', 18) + '</div>') +
-          '<div class="offering-admin-info"><b>' + esc(o.title) + '</b><div>' + (o.price > 0 ? money(STATE.admin.settings, o.price) : 'Contact for pricing') + '</div></div>' +
-          '<div class="row-actions">' +
-            '<button class="btn btn-outline btn-sm" data-action="edit">Edit</button>' +
-            '<label class="switch"><input type="checkbox" data-action="toggle" ' + (o.active ? 'checked' : '') + '> ' + (o.active ? 'Visible' : 'Hidden') + '</label>' +
-            '<button class="btn btn-danger btn-sm" data-action="delete">' + icon('trash', 14) + '</button>' +
-          '</div>' +
-        '</div>';
-      }).join('');
-
-      $$all('.offering-admin-row', list).forEach(function (row) {
-        var id = row.dataset.id;
-        var offering = offerings.filter(function (o) { return o.id === id; })[0];
-        row.querySelector('[data-action="edit"]').addEventListener('click', function () { openEditOfferingModal(offering); });
-        row.querySelector('[data-action="toggle"]').addEventListener('change', function (e) {
-          runAdmin('toggleOfferingActive', id, e.target.checked).then(function () {
-            toast('Updated.', 'success'); loadAdminOfferings(STATE.adminBusinessId);
-          }).catch(function (err) { toast(err.message || String(err), 'error'); });
-        });
-        row.querySelector('[data-action="delete"]').addEventListener('click', function () {
-          if (!confirm('Delete "' + offering.title + '"?')) return;
-          runAdmin('deleteOffering', id).then(function () {
-            toast('Deleted.', 'success'); loadAdminOfferings(STATE.adminBusinessId);
-          }).catch(function (err) { toast(err.message || String(err), 'error'); });
-        });
-      });
-    }
-
-    function openEditOfferingModal(offering) {
-      var modal = el(
-        '<div class="modal">' +
-          '<div class="modal-head"><h3>Edit item</h3><button class="modal-close">' + icon('x', 16) + '</button></div>' +
-          '<form id="edit-offering-form">' +
-            '<div class="field"><label>Title</label><input required name="title" value="' + esc(offering.title) + '"></div>' +
-            '<div class="field"><label>Price (0 = "Contact for pricing")</label><input type="number" step="0.01" name="price" value="' + Number(offering.price || 0) + '"></div>' +
-            '<div class="field"><label>Description (optional)</label><textarea name="description" rows="2">' + esc(offering.description || '') + '</textarea></div>' +
-            '<button type="submit" class="btn btn-navy btn-block">Save changes</button>' +
-          '</form>' +
-        '</div>'
-      );
-      var overlay = openModal(modal);
-      modal.querySelector('.modal-close').addEventListener('click', function () { overlay.remove(); });
-      modal.querySelector('#edit-offering-form').addEventListener('submit', function (e) {
-        e.preventDefault();
-        var fd = new FormData(e.target);
-        var payload = {}; fd.forEach(function (v, k) { payload[k] = v; });
-        var btn = e.target.querySelector('button[type="submit"]');
-        setBusy(btn, true, 'Saving…');
-        runAdmin('updateOffering', offering.id, payload).then(function () {
-          overlay.remove();
-          toast('Item updated.', 'success');
-          loadAdminOfferings(STATE.adminBusinessId);
-        }).catch(function (err) { setBusy(btn, false); toast(err.message || String(err), 'error'); });
-      });
-    }
-
-    // ---------------- Service Orders ----------------
-    var SERVICE_ORDER_STATUS_CLASS = {
-      'New': 'badge-pending', 'Contacted': 'badge-paid', 'In Progress': 'badge-processing',
-      'Completed': 'badge-delivered', 'Cancelled': 'badge-cancelled'
-    };
-
-    function renderServiceOrdersTab(target) {
-      var businesses = (STATE.admin.businesses || []).filter(function (b) { return b.type !== 'databundles'; });
-      var statuses = ['All'].concat(Object.keys(STATE.admin.serviceOrderStatuses || {}).map(function (k) { return STATE.admin.serviceOrderStatuses[k]; }));
-      var filter = STATE.serviceOrderFilter;
-
-      target.innerHTML =
-        '<div class="section-title">Service Orders</div>' +
-        '<p class="section-sub">Orders and quote requests from your other businesses — data bundle orders stay on the Orders tab.</p>' +
-        '<div class="toolbar">' +
-          '<select id="so-biz-filter"><option value="All">All businesses</option>' +
-            businesses.map(function (b) { return '<option value="' + esc(b.id) + '"' + (b.id === filter.businessId ? ' selected' : '') + '>' + esc(b.name) + '</option>'; }).join('') +
-          '</select>' +
-          '<select id="so-status-filter">' + statuses.map(function (s) { return '<option value="' + esc(s) + '"' + (s === filter.status ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') + '</select>' +
-        '</div>' +
-        '<div class="card" style="padding:0;overflow:hidden;" id="so-table-holder"><div class="empty-state"><div class="spinner" style="margin:0 auto;border-color:rgba(15,39,71,.15);border-top-color:var(--navy);"></div></div></div>';
-
-      $('#so-biz-filter').addEventListener('change', function (e) { STATE.serviceOrderFilter.businessId = e.target.value; loadServiceOrders(); });
-      $('#so-status-filter').addEventListener('change', function (e) { STATE.serviceOrderFilter.status = e.target.value; loadServiceOrders(); });
-
-      loadServiceOrders();
-    }
-
-    function loadServiceOrders() {
-      var holder = $('#so-table-holder');
-      if (!holder) return;
-      runAdmin('getAdminServiceOrders', STATE.serviceOrderFilter).then(function (orders) {
-        var holder2 = $('#so-table-holder');
-        if (!holder2) return;
-        holder2.innerHTML = renderServiceOrdersTable(orders);
-        wireServiceOrderActions(holder2);
-      }).catch(function (err) {
-        var holder2 = $('#so-table-holder');
-        if (holder2) holder2.innerHTML = '<div class="empty-state"><div class="big-icon">' + icon('alertTriangle', 32) + '</div>' + esc(err.message || err) + '</div>';
-      });
-    }
-
-    function renderServiceOrdersTable(orders) {
-      if (!orders.length) return '<div class="empty-state"><div class="big-icon">' + icon('inbox', 32) + '</div>No service orders yet.</div>';
-      var settings = STATE.admin.settings;
-      var rows = orders.map(function (o) {
-        var statusOptions = Object.keys(STATE.admin.serviceOrderStatuses || {}).map(function (k) {
-          var v = STATE.admin.serviceOrderStatuses[k];
-          return '<option value="' + esc(v) + '"' + (v === o.status ? ' selected' : '') + '>' + esc(v) + '</option>';
-        }).join('');
-        return '<tr>' +
-          '<td><b>' + esc(o.id) + '</b><br><span class="muted" style="font-size:11.5px;">' + fmtDate(o.timestamp) + '</span></td>' +
-          '<td>' + esc(o.businessName) + (o.offeringTitle ? '<br><span class="muted" style="font-size:11.5px;">' + esc(o.offeringTitle) + '</span>' : '') + '</td>' +
-          '<td>' + esc(o.customerName) + '<br><span class="muted" style="font-size:11.5px;">' + esc(o.phone) + '</span></td>' +
-          '<td>' + (o.price > 0 ? money(settings, o.price) : '—') + (o.momoRef ? '<br><span class="muted" style="font-size:11.5px;">Txn: ' + esc(o.momoRef) + '</span>' : '') + '</td>' +
-          '<td>' + esc(o.message || '—') + '</td>' +
-          '<td><span class="badge ' + (SERVICE_ORDER_STATUS_CLASS[o.status] || '') + '">' + esc(o.status) + '</span></td>' +
-          '<td><select class="so-status-select" data-id="' + esc(o.id) + '">' + statusOptions + '</select></td>' +
-        '</tr>';
-      }).join('');
-      return '<div class="table-wrap"><table class="data-table"><thead><tr>' +
-        '<th>Order</th><th>Business</th><th>Customer</th><th>Price</th><th>Message</th><th>Status</th><th>Update</th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-    }
-
-    function wireServiceOrderActions(holder) {
-      $$all('.so-status-select', holder).forEach(function (sel) {
-        sel.addEventListener('change', function () {
-          var id = sel.dataset.id;
-          var newStatus = sel.value;
-          runAdmin('updateServiceOrderStatus', id, newStatus, '').then(function () {
-            toast('Order ' + id + ' is now: ' + newStatus, 'success');
-            loadServiceOrders();
-          }).catch(function (err) { toast(err.message || String(err), 'error'); loadServiceOrders(); });
-        });
       });
     }
 

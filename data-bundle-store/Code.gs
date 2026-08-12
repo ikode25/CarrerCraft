@@ -2,13 +2,11 @@
  * ============================================================================
  *  DATA BUNDLE STORE — Google Apps Script backend
  * ============================================================================
- *  A self-serve storefront that can sell more than just data bundles: MTN /
- *  Telecel / AirtelTigo bundles (the original, specialized business, with
- *  Geosam/iDataGH fulfillment) PLUS any number of other businesses you add
- *  yourself (picture frames, installations, software, photography, ...)
- *  shown as tabs on the storefront, each with its own list of offerings and
- *  its own inquiry/order inbox. Admin portal is username + password login,
- *  default admin / admin123 — change it immediately.
+ *  A self-serve storefront where customers buy MTN / Telecel / AirtelTigo
+ *  data bundles, and a private admin portal (username + password login,
+ *  default admin / admin123 — change it immediately) where you set your own
+ *  selling prices, fulfill orders through Geosam's Send Bundle API, and
+ *  track profit.
  *
  *  Note: Geosam's API has no endpoint to look up bundle sizes/prices — you
  *  enter your own base prices manually (see the Pricing tab), matching what
@@ -45,24 +43,11 @@
 // actually picked up the latest code (Apps Script only serves new code to
 // the live /exec URL after Deploy > Manage deployments > Edit > New version
 // > Deploy — saving the file alone is not enough).
-var APP_VERSION = 'v1.10.0';
+var APP_VERSION = 'v1.8.0';
 
 var SHEET_PACKAGES = 'Packages';
 var SHEET_ORDERS = 'Orders';
 var SHEET_CAROUSEL = 'Carousel';
-var SHEET_BUSINESSES = 'Businesses';
-var SHEET_OFFERINGS = 'Offerings';
-var SHEET_SERVICE_ORDERS = 'ServiceOrders';
-
-// The built-in Data Bundles business — always exists, can't be deleted,
-// and maps to the existing Pricing/Orders/API Settings tabs rather than
-// the generic Offerings system every other business uses.
-var DATABUNDLES_BUSINESS_ID = 'databundles';
-
-var BUSINESS_HEADERS = ['ID', 'Name', 'Icon', 'Tagline', 'Type', 'Order', 'Active'];
-var OFFERING_HEADERS = ['ID', 'BusinessId', 'Title', 'Description', 'Price', 'ImageUrl', 'ImageFileId', 'Active', 'Order', 'UpdatedAt'];
-var SERVICE_ORDER_HEADERS = ['OrderID', 'Timestamp', 'BusinessId', 'BusinessName', 'OfferingTitle', 'Price', 'CustomerName', 'Phone', 'Message', 'MoMoRef', 'Status', 'Notes', 'UpdatedAt'];
-var SERVICE_ORDER_STATUS = { NEW: 'New', CONTACTED: 'Contacted', IN_PROGRESS: 'In Progress', COMPLETED: 'Completed', CANCELLED: 'Cancelled' };
 
 // 'IdataghPackageId' is iDataGH's own numeric package identifier (from their
 // GET /packages endpoint) — required to place an order through iDataGH,
@@ -307,11 +292,7 @@ function setupSheets() {
   getSheet_(SHEET_PACKAGES, PACKAGE_HEADERS);
   var ordersSheet = getSheet_(SHEET_ORDERS, ORDER_HEADERS);
   getSheet_(SHEET_CAROUSEL, CAROUSEL_HEADERS);
-  getSheet_(SHEET_BUSINESSES, BUSINESS_HEADERS);
-  getSheet_(SHEET_OFFERINGS, OFFERING_HEADERS);
-  getSheet_(SHEET_SERVICE_ORDERS, SERVICE_ORDER_HEADERS);
   seedMockPackagesIfEmpty_();
-  seedDatabundlesBusinessIfMissing_();
   ensureAdminCredentials_();
 
   // Force the phone columns to stay plain text so Sheets never silently
@@ -321,9 +302,6 @@ function setupSheets() {
     var idx = ORDER_HEADERS.indexOf(col) + 1;
     ordersSheet.getRange(1, idx, 2000, 1).setNumberFormat('@');
   });
-  var serviceOrdersSheet = getSheet_(SHEET_SERVICE_ORDERS, SERVICE_ORDER_HEADERS);
-  var phoneIdx = SERVICE_ORDER_HEADERS.indexOf('Phone') + 1;
-  serviceOrdersSheet.getRange(1, phoneIdx, 2000, 1).setNumberFormat('@');
 
   return 'Sheets are ready. Admin login: admin / admin123 (change it in the Account tab).';
 }
@@ -624,13 +602,6 @@ function seedMockPackagesIfEmpty_() {
   return 'Seeded starter pricing for ' + NETWORKS.join(', ') + '. Verify base prices against your real Geosam pricing before going live.';
 }
 
-function seedDatabundlesBusinessIfMissing_() {
-  var sheet = getSheet_(SHEET_BUSINESSES, BUSINESS_HEADERS);
-  var existing = sheetRowsToObjects_(sheet, BUSINESS_HEADERS);
-  if (existing.some(function (b) { return b.ID === DATABUNDLES_BUSINESS_ID; })) return;
-  sheet.appendRow([DATABUNDLES_BUSINESS_ID, 'Data Bundles', 'signal', 'MTN, Telecel & AirtelTigo bundles', 'databundles', 1, true]);
-}
-
 // ---------------------------------------------------------------------------
 // 6b. CAROUSEL (storefront hero images)
 // ---------------------------------------------------------------------------
@@ -683,15 +654,14 @@ function getAdminCarouselImages(token) {
 }
 
 /**
- * Shared by the carousel, business logo, and offering-image uploads.
+ * Client-callable (admin only). payload: { dataUrl, caption, fileName }
  * dataUrl is a base64 data: URL from a <input type="file"> read via
- * FileReader.readAsDataURL() on the client. Returns { fileId, url }.
- * drive.google.com/uc?export=view frequently fails to render inline (shows
- * a "can't preview" page instead) — /thumbnail is the reliable way to
- * hotlink a Drive image directly into an <img> tag.
+ * FileReader.readAsDataURL() on the client.
  */
-function uploadImageToDrive_(dataUrl, fileName, sizeParam) {
-  var match = /^data:(image\/[a-zA-Z0-9+.\-]+);base64,(.+)$/.exec(dataUrl || '');
+function uploadCarouselImage(token, payload) {
+  requireAdminSession_(token);
+  payload = payload || {};
+  var match = /^data:(image\/[a-zA-Z0-9+.\-]+);base64,(.+)$/.exec(payload.dataUrl || '');
   if (!match) throw new Error('That doesn\'t look like an image file. Please choose a JPG, PNG, or WebP image.');
 
   var mimeType = match[1];
@@ -700,34 +670,26 @@ function uploadImageToDrive_(dataUrl, fileName, sizeParam) {
     throw new Error('Image is too large (max 5MB). Please compress it and try again.');
   }
 
-  var blob = Utilities.newBlob(bytes, mimeType, fileName || 'image');
+  var blob = Utilities.newBlob(bytes, mimeType, payload.fileName || 'carousel-image');
   var folder = getCarouselFolder_();
   var file = folder.createFile(blob);
   try {
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   } catch (err) {
     file.setTrashed(true);
-    throw new Error('Could not make this image publicly viewable (your Drive/Workspace sharing policy may block "anyone with the link"). Ask your Google Workspace admin to allow external link sharing, or use a personal Google account for this project.');
+    throw new Error('Could not make this photo publicly viewable (your Drive/Workspace sharing policy may block "anyone with the link"). Ask your Google Workspace admin to allow external link sharing, or use a personal Google account for this project.');
   }
-  var fileId = file.getId();
-  return { fileId: fileId, url: 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=' + (sizeParam || 'w1600') };
-}
-
-/**
- * Client-callable (admin only). payload: { dataUrl, caption, fileName }
- */
-function uploadCarouselImage(token, payload) {
-  requireAdminSession_(token);
-  payload = payload || {};
-  var uploaded = uploadImageToDrive_(payload.dataUrl, payload.fileName || 'carousel-image');
-  var url = uploaded.url;
+  // drive.google.com/uc?export=view frequently fails to render inline (shows
+  // a "can't preview" page instead) — the /thumbnail endpoint is the
+  // reliable way to hotlink a Drive image directly into an <img> tag.
+  var url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1600';
 
   var sheet = getSheet_(SHEET_CAROUSEL, CAROUSEL_HEADERS);
   var existing = getAllCarousel_();
   var nextOrder = existing.reduce(function (max, c) { return Math.max(max, Number(c.Order) || 0); }, 0) + 1;
   var id = 'CAR-' + Utilities.getUuid().split('-')[0].toUpperCase();
 
-  sheet.appendRow([id, url, String(payload.caption || '').trim(), nextOrder, true, uploaded.fileId, new Date()]);
+  sheet.appendRow([id, url, String(payload.caption || '').trim(), nextOrder, true, file.getId(), new Date()]);
   return { success: true, id: id, url: url };
 }
 
@@ -779,15 +741,32 @@ function findRowById_(sheet, headers, id) {
 function uploadLogo(token, payload) {
   requireAdminSession_(token);
   payload = payload || {};
-  var uploaded = uploadImageToDrive_(payload.dataUrl, payload.fileName || 'store-logo', 'w300');
+  var match = /^data:(image\/[a-zA-Z0-9+.\-]+);base64,(.+)$/.exec(payload.dataUrl || '');
+  if (!match) throw new Error('That doesn\'t look like an image file. Please choose a JPG, PNG, or WebP image.');
+
+  var mimeType = match[1];
+  var bytes = Utilities.base64Decode(match[2]);
+  if (bytes.length > MAX_CAROUSEL_IMAGE_BYTES) {
+    throw new Error('Image is too large (max 5MB). Please compress it and try again.');
+  }
+
+  var blob = Utilities.newBlob(bytes, mimeType, payload.fileName || 'store-logo');
+  var folder = getCarouselFolder_();
+  var file = folder.createFile(blob);
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (err) {
+    file.setTrashed(true);
+    throw new Error('Could not make this logo publicly viewable (your Drive/Workspace sharing policy may block "anyone with the link").');
+  }
 
   var oldFileId = getSetting_('LOGO_FILE_ID');
   if (oldFileId) {
     try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch (e) { /* already gone — fine */ }
   }
 
-  setSetting_('LOGO_FILE_ID', uploaded.fileId);
-  return { success: true, url: uploaded.url };
+  setSetting_('LOGO_FILE_ID', file.getId());
+  return { success: true, url: 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w300' };
 }
 
 /** Client-callable (admin only). Reverts to the default icon logo. */
@@ -804,326 +783,6 @@ function removeLogo(token) {
 function getLogoUrl_() {
   var fileId = getSetting_('LOGO_FILE_ID');
   return fileId ? ('https://drive.google.com/thumbnail?id=' + fileId + '&sz=w300') : '';
-}
-
-// ---------------------------------------------------------------------------
-// 6d. BUSINESSES, OFFERINGS & SERVICE ORDERS
-// ---------------------------------------------------------------------------
-// A second, generic storefront system alongside the data bundle one, for
-// any other business the admin runs (picture frames, installation
-// services, software projects, photography, or whatever gets added
-// later). The built-in "Data Bundles" business (DATABUNDLES_BUSINESS_ID)
-// is protected — it can be hidden but not deleted or edited here — and
-// keeps using the existing Pricing/Orders/API Settings tabs. Every other
-// business is a simple list of Offerings (title, optional price, optional
-// image, description); customers submit a ServiceOrder — a payment
-// confirmation if the offering has a price, or a plain quote/inquiry
-// request if it doesn't — and the admin follows up from Service Orders.
-// ---------------------------------------------------------------------------
-
-function getAllBusinesses_() {
-  var sheet = getSheet_(SHEET_BUSINESSES, BUSINESS_HEADERS);
-  var rows = sheetRowsToObjects_(sheet, BUSINESS_HEADERS);
-  rows.sort(function (a, b) { return (Number(a.Order) || 0) - (Number(b.Order) || 0); });
-  return rows;
-}
-
-/** Client-callable (public). Active businesses only, in display order. */
-function getPublicBusinesses_() {
-  return getAllBusinesses_()
-    .filter(function (b) { return b.Active === true || b.Active === 'TRUE'; })
-    .map(function (b) { return { id: b.ID, name: b.Name, icon: b.Icon, tagline: b.Tagline, type: b.Type }; });
-}
-
-function getAdminBusinesses_() {
-  return getAllBusinesses_().map(function (b) {
-    return {
-      id: b.ID, name: b.Name, icon: b.Icon, tagline: b.Tagline, type: b.Type,
-      order: Number(b.Order) || 0, active: b.Active === true || b.Active === 'TRUE',
-      builtin: b.ID === DATABUNDLES_BUSINESS_ID
-    };
-  });
-}
-
-/** Client-callable (admin only). */
-function getAdminBusinesses(token) {
-  requireAdminSession_(token);
-  return getAdminBusinesses_();
-}
-
-function findBusinessRow_(sheet, id) { return findRowById_(sheet, BUSINESS_HEADERS, id); }
-
-/** Client-callable (admin only). payload: { name, icon, tagline }. */
-function addBusiness(token, payload) {
-  requireAdminSession_(token);
-  payload = payload || {};
-  var name = String(payload.name || '').trim();
-  if (!name) throw new Error('Business name is required.');
-
-  var sheet = getSheet_(SHEET_BUSINESSES, BUSINESS_HEADERS);
-  var existing = getAllBusinesses_();
-  var nextOrder = existing.reduce(function (max, b) { return Math.max(max, Number(b.Order) || 0); }, 0) + 1;
-  var id = 'BIZ-' + Utilities.getUuid().split('-')[0].toUpperCase();
-
-  sheet.appendRow([id, name, payload.icon || 'tag', String(payload.tagline || '').trim(), 'generic', nextOrder, true]);
-  return { success: true, id: id };
-}
-
-/** Client-callable (admin only). payload: { name, icon, tagline }. Can't rename/re-icon the built-in Data Bundles business's type. */
-function updateBusiness(token, id, payload) {
-  requireAdminSession_(token);
-  payload = payload || {};
-  var sheet = getSheet_(SHEET_BUSINESSES, BUSINESS_HEADERS);
-  var row = findBusinessRow_(sheet, id);
-  if (row === -1) throw new Error('Business not found.');
-  var name = String(payload.name || '').trim();
-  if (!name) throw new Error('Business name is required.');
-
-  sheet.getRange(row, BUSINESS_HEADERS.indexOf('Name') + 1).setValue(name);
-  sheet.getRange(row, BUSINESS_HEADERS.indexOf('Icon') + 1).setValue(payload.icon || 'tag');
-  sheet.getRange(row, BUSINESS_HEADERS.indexOf('Tagline') + 1).setValue(String(payload.tagline || '').trim());
-  return { success: true };
-}
-
-/** Client-callable (admin only). Show/hide a business tab on the storefront. */
-function toggleBusinessActive(token, id, active) {
-  requireAdminSession_(token);
-  var sheet = getSheet_(SHEET_BUSINESSES, BUSINESS_HEADERS);
-  var row = findBusinessRow_(sheet, id);
-  if (row === -1) throw new Error('Business not found.');
-  sheet.getRange(row, BUSINESS_HEADERS.indexOf('Active') + 1).setValue(!!active);
-  return { success: true };
-}
-
-/** Client-callable (admin only). Deletes a business and all of its offerings (Data Bundles can't be deleted). */
-function deleteBusiness(token, id) {
-  requireAdminSession_(token);
-  if (id === DATABUNDLES_BUSINESS_ID) throw new Error('The Data Bundles business can\'t be deleted — hide it instead if you don\'t want it shown.');
-  var sheet = getSheet_(SHEET_BUSINESSES, BUSINESS_HEADERS);
-  var row = findBusinessRow_(sheet, id);
-  if (row === -1) throw new Error('Business not found.');
-  sheet.deleteRow(row);
-
-  var offeringsSheet = getSheet_(SHEET_OFFERINGS, OFFERING_HEADERS);
-  var offerings = sheetRowsToObjects_(offeringsSheet, OFFERING_HEADERS).filter(function (o) { return o.BusinessId === id; });
-  // Delete bottom-to-top so row numbers already collected stay valid as rows shift.
-  offerings.sort(function (a, b) { return b._row - a._row; }).forEach(function (o) {
-    if (o.ImageFileId) { try { DriveApp.getFileById(o.ImageFileId).setTrashed(true); } catch (e) { /* already gone */ } }
-    offeringsSheet.deleteRow(o._row);
-  });
-  return { success: true };
-}
-
-// ---------------- Offerings ----------------
-
-function getAllOfferings_(businessId) {
-  var sheet = getSheet_(SHEET_OFFERINGS, OFFERING_HEADERS);
-  var rows = sheetRowsToObjects_(sheet, OFFERING_HEADERS).filter(function (o) { return o.BusinessId === businessId; });
-  rows.sort(function (a, b) { return (Number(a.Order) || 0) - (Number(b.Order) || 0); });
-  return rows;
-}
-
-// Same self-healing pattern as the carousel: derive the URL from the
-// stored file ID at read time rather than trusting a saved link.
-function offeringImageUrl_(o) {
-  return o.ImageFileId ? ('https://drive.google.com/thumbnail?id=' + o.ImageFileId + '&sz=w800') : (o.ImageUrl || '');
-}
-
-function mapOfferingPublic_(o) {
-  return {
-    id: o.ID, title: o.Title, description: o.Description,
-    price: Number(o.Price) || 0, imageUrl: offeringImageUrl_(o)
-  };
-}
-
-/** Client-callable (public). Active offerings for one business, in display order. */
-function getBusinessOfferings(businessId) {
-  var business = getAllBusinesses_().filter(function (b) { return b.ID === businessId; })[0];
-  if (!business || !(business.Active === true || business.Active === 'TRUE')) {
-    throw new Error('This isn\'t available right now.');
-  }
-  return getAllOfferings_(businessId)
-    .filter(function (o) { return o.Active === true || o.Active === 'TRUE'; })
-    .map(mapOfferingPublic_);
-}
-
-/** Client-callable (admin only). All offerings for a business, including hidden ones. */
-function getAdminOfferings(token, businessId) {
-  requireAdminSession_(token);
-  return getAllOfferings_(businessId).map(function (o) {
-    var p = mapOfferingPublic_(o);
-    p.active = o.Active === true || o.Active === 'TRUE';
-    p.updatedAt = toIsoString_(o.UpdatedAt);
-    return p;
-  });
-}
-
-/**
- * Client-callable (admin only). payload: { businessId, title, description,
- * price, dataUrl?, fileName? } — price of 0/blank means "contact for quote".
- */
-function addOffering(token, payload) {
-  requireAdminSession_(token);
-  payload = payload || {};
-  var title = String(payload.title || '').trim();
-  if (!title) throw new Error('Title is required.');
-  if (!payload.businessId) throw new Error('Business is required.');
-
-  var imageUrl = '', imageFileId = '';
-  if (payload.dataUrl) {
-    var uploaded = uploadImageToDrive_(payload.dataUrl, payload.fileName || 'offering-image', 'w800');
-    imageUrl = uploaded.url;
-    imageFileId = uploaded.fileId;
-  }
-
-  var sheet = getSheet_(SHEET_OFFERINGS, OFFERING_HEADERS);
-  var existing = getAllOfferings_(payload.businessId);
-  var nextOrder = existing.reduce(function (max, o) { return Math.max(max, Number(o.Order) || 0); }, 0) + 1;
-  var id = 'OFR-' + Utilities.getUuid().split('-')[0].toUpperCase();
-
-  sheet.appendRow([
-    id, payload.businessId, title, String(payload.description || '').trim(),
-    Number(payload.price) || 0, imageUrl, imageFileId, true, nextOrder, new Date()
-  ]);
-  return { success: true, id: id };
-}
-
-/** Client-callable (admin only). payload: { title, description, price }. */
-function updateOffering(token, id, payload) {
-  requireAdminSession_(token);
-  payload = payload || {};
-  var title = String(payload.title || '').trim();
-  if (!title) throw new Error('Title is required.');
-
-  var sheet = getSheet_(SHEET_OFFERINGS, OFFERING_HEADERS);
-  var row = findRowById_(sheet, OFFERING_HEADERS, id);
-  if (row === -1) throw new Error('Offering not found.');
-
-  sheet.getRange(row, OFFERING_HEADERS.indexOf('Title') + 1).setValue(title);
-  sheet.getRange(row, OFFERING_HEADERS.indexOf('Description') + 1).setValue(String(payload.description || '').trim());
-  sheet.getRange(row, OFFERING_HEADERS.indexOf('Price') + 1).setValue(Number(payload.price) || 0);
-  sheet.getRange(row, OFFERING_HEADERS.indexOf('UpdatedAt') + 1).setValue(new Date());
-  return { success: true };
-}
-
-/** Client-callable (admin only). Show/hide an offering. */
-function toggleOfferingActive(token, id, active) {
-  requireAdminSession_(token);
-  var sheet = getSheet_(SHEET_OFFERINGS, OFFERING_HEADERS);
-  var row = findRowById_(sheet, OFFERING_HEADERS, id);
-  if (row === -1) throw new Error('Offering not found.');
-  sheet.getRange(row, OFFERING_HEADERS.indexOf('Active') + 1).setValue(!!active);
-  return { success: true };
-}
-
-/** Client-callable (admin only). */
-function deleteOffering(token, id) {
-  requireAdminSession_(token);
-  var sheet = getSheet_(SHEET_OFFERINGS, OFFERING_HEADERS);
-  var row = findRowById_(sheet, OFFERING_HEADERS, id);
-  if (row === -1) throw new Error('Offering not found.');
-  var fileId = sheet.getRange(row, OFFERING_HEADERS.indexOf('ImageFileId') + 1).getValue();
-  sheet.deleteRow(row);
-  if (fileId) { try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) { /* already gone */ } }
-  return { success: true };
-}
-
-// ---------------- Service Orders ----------------
-
-function generateServiceOrderId_() {
-  var datePart = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT', 'yyMMdd');
-  var randPart = Utilities.getUuid().split('-')[0].substring(0, 4).toUpperCase();
-  return 'SVC-' + datePart + '-' + randPart;
-}
-
-/**
- * Client-callable (public). payload: { businessId, offeringId?, customerName,
- * phone, message?, momoRef? }. If the offering (or a plain business-level
- * inquiry with no offering) has no price, this is just a quote/contact
- * request — no payment fields required. If it has a price, a Transaction ID
- * is required, same as the data bundle checkout.
- */
-function submitServiceOrder(payload) {
-  payload = payload || {};
-  var business = getAllBusinesses_().filter(function (b) { return b.ID === payload.businessId; })[0];
-  if (!business || !(business.Active === true || business.Active === 'TRUE')) {
-    throw new Error('That business is no longer available. Please refresh and try again.');
-  }
-  if (!payload.customerName || String(payload.customerName).trim().length < 2) {
-    throw new Error('Enter your name.');
-  }
-  if (!isValidGhPhone_(payload.phone)) {
-    throw new Error('Enter a valid phone number, e.g. 0244000000.');
-  }
-
-  var offeringTitle = '';
-  var price = 0;
-  if (payload.offeringId) {
-    var offering = getAllOfferings_(payload.businessId).filter(function (o) { return o.ID === payload.offeringId; })[0];
-    if (!offering || !(offering.Active === true || offering.Active === 'TRUE')) {
-      throw new Error('That item is no longer available. Please refresh and choose again.');
-    }
-    offeringTitle = offering.Title;
-    price = Number(offering.Price) || 0;
-  }
-
-  if (price > 0 && (!payload.momoRef || String(payload.momoRef).trim().length < 3)) {
-    throw new Error('Enter the Transaction ID from your Mobile Money payment confirmation.');
-  }
-  if (price === 0 && (!payload.message || String(payload.message).trim().length < 3)) {
-    throw new Error('Tell us a little about what you need.');
-  }
-
-  var orderId = generateServiceOrderId_();
-  var lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
-    var sheet = getSheet_(SHEET_SERVICE_ORDERS, SERVICE_ORDER_HEADERS);
-    sheet.appendRow([
-      orderId, new Date(), business.ID, business.Name, offeringTitle, price,
-      String(payload.customerName).trim(), String(payload.phone).trim(),
-      String(payload.message || '').trim(), String(payload.momoRef || '').trim(),
-      SERVICE_ORDER_STATUS.NEW, '', new Date()
-    ]);
-  } finally {
-    lock.releaseLock();
-  }
-
-  return { success: true, orderId: orderId, businessName: business.Name, offeringTitle: offeringTitle, price: price };
-}
-
-function getAllServiceOrders_() {
-  var sheet = getSheet_(SHEET_SERVICE_ORDERS, SERVICE_ORDER_HEADERS);
-  return sheetRowsToObjects_(sheet, SERVICE_ORDER_HEADERS);
-}
-
-/** Client-callable (admin only). filter: { businessId?, status? }. */
-function getAdminServiceOrders(token, filter) {
-  requireAdminSession_(token);
-  filter = filter || {};
-  var orders = getAllServiceOrders_();
-  if (filter.businessId && filter.businessId !== 'All') orders = orders.filter(function (o) { return o.BusinessId === filter.businessId; });
-  if (filter.status && filter.status !== 'All') orders = orders.filter(function (o) { return o.Status === filter.status; });
-  orders.sort(function (a, b) { return new Date(b.Timestamp) - new Date(a.Timestamp); });
-  return orders.map(function (o) {
-    return {
-      id: o.OrderID, timestamp: toIsoString_(o.Timestamp), businessId: o.BusinessId, businessName: o.BusinessName,
-      offeringTitle: o.OfferingTitle, price: Number(o.Price) || 0, customerName: o.CustomerName,
-      phone: normalizePhone_(o.Phone), message: o.Message, momoRef: o.MoMoRef, status: o.Status, notes: o.Notes
-    };
-  });
-}
-
-/** Client-callable (admin only). */
-function updateServiceOrderStatus(token, orderId, status, notes) {
-  requireAdminSession_(token);
-  var sheet = getSheet_(SHEET_SERVICE_ORDERS, SERVICE_ORDER_HEADERS);
-  var row = findRowById_(sheet, SERVICE_ORDER_HEADERS, orderId);
-  if (row === -1) throw new Error('Order not found.');
-  sheet.getRange(row, SERVICE_ORDER_HEADERS.indexOf('Status') + 1).setValue(status);
-  sheet.getRange(row, SERVICE_ORDER_HEADERS.indexOf('UpdatedAt') + 1).setValue(new Date());
-  if (notes !== undefined) sheet.getRange(row, SERVICE_ORDER_HEADERS.indexOf('Notes') + 1).setValue(notes);
-  return { success: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -1955,9 +1614,7 @@ function getStoreBootstrap() {
     settings: getPublicSettings_(),
     packagesByNetwork: getStorefrontPackages(),
     carousel: getCarouselImages_(),
-    networks: NETWORKS,
-    businesses: getPublicBusinesses_(),
-    databundlesBusinessId: DATABUNDLES_BUSINESS_ID
+    networks: NETWORKS
   };
 }
 
@@ -1986,10 +1643,7 @@ function getAdminBootstrap(token) {
       stats: getDashboardStats_(),
       carousel: getAdminCarousel_(),
       networks: NETWORKS,
-      orderStatuses: ORDER_STATUS,
-      businesses: getAdminBusinesses_(),
-      databundlesBusinessId: DATABUNDLES_BUSINESS_ID,
-      serviceOrderStatuses: SERVICE_ORDER_STATUS
+      orderStatuses: ORDER_STATUS
     };
   } catch (err) {
     return { authorized: false, appVersion: APP_VERSION, bootstrapError: err.message };
