@@ -43,13 +43,17 @@
 // actually picked up the latest code (Apps Script only serves new code to
 // the live /exec URL after Deploy > Manage deployments > Edit > New version
 // > Deploy — saving the file alone is not enough).
-var APP_VERSION = 'v1.7.0';
+var APP_VERSION = 'v1.8.0';
 
 var SHEET_PACKAGES = 'Packages';
 var SHEET_ORDERS = 'Orders';
 var SHEET_CAROUSEL = 'Carousel';
 
-var PACKAGE_HEADERS = ['ID', 'Network', 'Size', 'Validity', 'AmountMB', 'BasePrice', 'SellingPrice', 'Active', 'LastUpdated'];
+// 'IdataghPackageId' is iDataGH's own numeric package identifier (from their
+// GET /packages endpoint) — required to place an order through iDataGH,
+// separate from AmountMB (which is all Geosam needs). Populated by
+// "Sync from iDataGH" in the Pricing tab, or set manually.
+var PACKAGE_HEADERS = ['ID', 'Network', 'Size', 'Validity', 'AmountMB', 'BasePrice', 'SellingPrice', 'Active', 'LastUpdated', 'IdataghPackageId'];
 // 'Provider' records which data provider (geosam/idatagh) actually
 // fulfilled the order, so a status check always polls the right one even
 // if you switch providers afterward. Blank on old rows written before
@@ -61,6 +65,8 @@ var NETWORKS = ['MTN', 'Telecel', 'AirtelTigo'];
 
 // Geosam's API refers to AirtelTigo as "AT"; MTN and Telecel match our own names.
 var GEOSAM_NETWORK_CODE = { MTN: 'MTN', Telecel: 'Telecel', AirtelTigo: 'AT' };
+// iDataGH uses lowercase network names ("mtn", "telecel", "airteltigo").
+var IDATAGH_NETWORK_CODE = { MTN: 'mtn', Telecel: 'telecel', AirtelTigo: 'airteltigo' };
 
 var ORDER_STATUS = {
   PENDING: 'Pending Payment',
@@ -89,7 +95,7 @@ var DEFAULT_SETTINGS = {
 
   // iDataGH adapter is a placeholder until real API docs are provided —
   // see the IDATAGH ADAPTER section below.
-  IDATAGH_API_BASE: '',
+  IDATAGH_API_BASE: 'https://idatagh.com',
   IDATAGH_API_KEY: '',
   IDATAGH_MODE: 'mock', // 'mock' | 'live'
 
@@ -342,7 +348,8 @@ function getPublicSettings_() {
     currency: getSetting_('CURRENCY_SYMBOL'),
     banner: composeBanner_(getRawBannerSettings_()),
     themePrimary: getSetting_('THEME_PRIMARY'),
-    themeAccent: getSetting_('THEME_ACCENT')
+    themeAccent: getSetting_('THEME_ACCENT'),
+    logoUrl: getLogoUrl_()
   };
 }
 
@@ -379,7 +386,8 @@ function getAdminSettings_() {
     airtelTigoDeliveryTime: banner.AIRTELTIGO_DELIVERY_TIME,
     bannerPreview: composeBanner_(banner),
     themePrimary: getSetting_('THEME_PRIMARY'),
-    themeAccent: getSetting_('THEME_ACCENT')
+    themeAccent: getSetting_('THEME_ACCENT'),
+    logoUrl: getLogoUrl_()
   };
 }
 
@@ -475,7 +483,8 @@ function getAdminPackages_() {
       sellingPrice: selling,
       profit: selling - base,
       active: p.Active === true || p.Active === 'TRUE',
-      lastUpdated: toIsoString_(p.LastUpdated)
+      lastUpdated: toIsoString_(p.LastUpdated),
+      idataghPackageId: p.IdataghPackageId || ''
     };
   });
 }
@@ -540,7 +549,7 @@ function addManualPackage(token, pkg) {
   if (findPackageRow_(sheet, id) !== -1) throw new Error('A package with that network + size already exists.');
 
   sheet.appendRow([
-    id, pkg.network, pkg.size, pkg.validity || '', amountMB, basePrice, sellingPrice, true, new Date()
+    id, pkg.network, pkg.size, pkg.validity || '', amountMB, basePrice, sellingPrice, true, new Date(), pkg.idataghPackageId || ''
   ]);
   return { success: true, id: id };
 }
@@ -719,6 +728,64 @@ function findRowById_(sheet, headers, id) {
 }
 
 // ---------------------------------------------------------------------------
+// 6c. BUSINESS LOGO
+// ---------------------------------------------------------------------------
+// Same Drive-backed pattern as the carousel, but a single image rather than
+// a list — replacing it trashes the old file.
+// ---------------------------------------------------------------------------
+
+/**
+ * Client-callable (admin only). payload: { dataUrl, fileName } — same
+ * base64 data: URL shape as uploadCarouselImage().
+ */
+function uploadLogo(token, payload) {
+  requireAdminSession_(token);
+  payload = payload || {};
+  var match = /^data:(image\/[a-zA-Z0-9+.\-]+);base64,(.+)$/.exec(payload.dataUrl || '');
+  if (!match) throw new Error('That doesn\'t look like an image file. Please choose a JPG, PNG, or WebP image.');
+
+  var mimeType = match[1];
+  var bytes = Utilities.base64Decode(match[2]);
+  if (bytes.length > MAX_CAROUSEL_IMAGE_BYTES) {
+    throw new Error('Image is too large (max 5MB). Please compress it and try again.');
+  }
+
+  var blob = Utilities.newBlob(bytes, mimeType, payload.fileName || 'store-logo');
+  var folder = getCarouselFolder_();
+  var file = folder.createFile(blob);
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (err) {
+    file.setTrashed(true);
+    throw new Error('Could not make this logo publicly viewable (your Drive/Workspace sharing policy may block "anyone with the link").');
+  }
+
+  var oldFileId = getSetting_('LOGO_FILE_ID');
+  if (oldFileId) {
+    try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch (e) { /* already gone — fine */ }
+  }
+
+  setSetting_('LOGO_FILE_ID', file.getId());
+  return { success: true, url: 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w300' };
+}
+
+/** Client-callable (admin only). Reverts to the default icon logo. */
+function removeLogo(token) {
+  requireAdminSession_(token);
+  var oldFileId = getSetting_('LOGO_FILE_ID');
+  if (oldFileId) {
+    try { DriveApp.getFileById(oldFileId).setTrashed(true); } catch (e) { /* already gone — fine */ }
+  }
+  setSetting_('LOGO_FILE_ID', '');
+  return { success: true };
+}
+
+function getLogoUrl_() {
+  var fileId = getSetting_('LOGO_FILE_ID');
+  return fileId ? ('https://drive.google.com/thumbnail?id=' + fileId + '&sz=w300') : '';
+}
+
+// ---------------------------------------------------------------------------
 // 7. GEOSAM ADAPTER
 // ---------------------------------------------------------------------------
 // Based on Geosam's published API docs (https://geosams.com/controller/api-documentation/):
@@ -853,31 +920,39 @@ function testGeosamConnection_() {
 }
 
 // ---------------------------------------------------------------------------
-// 7b. IDATAGH ADAPTER (placeholder — no API docs yet)
+// 7b. IDATAGH ADAPTER
 // ---------------------------------------------------------------------------
-// iDataGH's real API isn't documented here — this mirrors the exact same
-// safe pattern the Geosam adapter used before its real docs were provided:
-// Mock mode works out of the box for testing the switch-over flow; every
-// TODO below is what needs fixing once you share iDataGH's API docs
-// (base URL, auth scheme, send/status endpoints and their request/response
-// shapes) the same way you did for Geosam.
+// Based on iDataGH's published API docs (https://idatagh.com/api-documentation/):
+//  - Auth: "Authorization: Bearer <api_key>" + "Content-Type: application/json".
+//  - Unlike Geosam, iDataGH DOES expose a package list per network (GET
+//    /packages) — each package has its own numeric package_id, which is
+//    required (not a data-in-MB amount) to place an order. That ID is
+//    stored per package as IdataghPackageId, filled in by "Sync from
+//    iDataGH" in the Pricing tab.
+//  - Place Order returns iDataGH's own order_id — that becomes this order's
+//    ProviderRef for later status checks (iDataGH doesn't accept a
+//    client-supplied idempotency reference the way Geosam does).
+//  - iDataGH's wallet balance is a single overall figure, not split by
+//    network like Geosam's.
 // ---------------------------------------------------------------------------
 
 var IDATAGH_ENDPOINTS = {
-  sendBundle: '/api/send',            // TODO confirm real path
-  transactionDetail: '/api/status/'   // TODO confirm real path + how the reference is passed
+  placeOrder: '/wp-json/custom/v1/place-order',
+  orderStatus: '/wp-json/custom/v1/order-status', // ?order_id=
+  walletBalance: '/wp-json/custom/v1/wallet-balance',
+  packages: '/wp-json/custom/v1/packages' // ?network=mtn|telecel|airteltigo
 };
 
 function idataghRequest_(path, method, payload) {
-  var base = getSetting_('IDATAGH_API_BASE');
+  var base = getSetting_('IDATAGH_API_BASE') || 'https://idatagh.com';
   var key = getSetting_('IDATAGH_API_KEY');
-  if (!base || !key) {
-    throw new Error('iDataGH API is not configured yet. Add your API base URL and key in API Settings, or keep iDataGH Mode set to "Mock".');
+  if (!key) {
+    throw new Error('iDataGH API key is not set yet. Add it in API Settings, or keep iDataGH Mode set to "Mock" while you test the store.');
   }
   var options = {
     method: method || 'get',
     contentType: 'application/json',
-    headers: { 'Authorization': 'Bearer ' + key }, // TODO confirm auth scheme (may be 'Token', an API-key header, etc.)
+    headers: { 'Authorization': 'Bearer ' + key },
     muteHttpExceptions: true
   };
   if (payload) options.payload = JSON.stringify(payload);
@@ -907,19 +982,27 @@ function buyIdataghBundle_(order) {
       message: 'Simulated: bundle request accepted (iDataGH Mode is set to Mock).'
     };
   }
-  // TODO: adjust field names/response shape once you have iDataGH's real docs.
-  var res = idataghRequest_(IDATAGH_ENDPOINTS.sendBundle, 'post', {
-    network: order.Network,
-    phone: order.RecipientPhone,
-    amount_mb: Number(order.AmountMB),
-    reference: order.Reference
+  if (!order.IdataghPackageId) {
+    return {
+      success: false,
+      status: 'Failed',
+      providerRef: '',
+      message: 'This package has no iDataGH package ID. Go to Pricing and click "Sync from iDataGH" for ' + order.Network + ' (or set the ID manually).'
+    };
+  }
+  var networkCode = IDATAGH_NETWORK_CODE[order.Network] || String(order.Network).toLowerCase();
+  var res = idataghRequest_(IDATAGH_ENDPOINTS.placeOrder, 'post', {
+    network: networkCode,
+    beneficiary: order.RecipientPhone,
+    'pa_data-bundle-packages': Number(order.IdataghPackageId)
   });
-  var ok = res.success === true || res.status === 'success' || String(res.code) === '200';
+  var ok = res.status === 'success';
   return {
     success: ok,
     status: ok ? 'Processing' : 'Failed',
-    providerRef: order.Reference,
-    message: res.message || (ok ? 'Bundle request accepted.' : 'iDataGH rejected the request.')
+    // iDataGH assigns its own order_id — that's what we poll later, not our locally-generated reference.
+    providerRef: ok ? String(res.order_id) : '',
+    message: ok ? ('Order placed (iDataGH order #' + res.order_id + ').') : (res.message || 'iDataGH rejected the request.')
   };
 }
 
@@ -928,20 +1011,105 @@ function checkIdataghTransactionStatus_(reference) {
   if (mode !== 'live') {
     return { status: 'Completed', message: 'Simulated: bundle delivered (Mock mode).' };
   }
-  // TODO: adjust once you have iDataGH's real docs.
-  return idataghRequest_(IDATAGH_ENDPOINTS.transactionDetail + encodeURIComponent(reference), 'get');
+  var res = idataghRequest_(IDATAGH_ENDPOINTS.orderStatus + '?order_id=' + encodeURIComponent(reference), 'get');
+  if (res.status !== 'success') {
+    return { status: 'Failed', message: res.message || 'iDataGH could not find this order.' };
+  }
+  // order_status seen in their docs: "Completed" — other values (Pending/Processing/Failed
+  // etc.) aren't documented; anything not "Completed" is treated as still processing
+  // by the caller, so this is safe either way.
+  return { status: res.order_status || 'Processing', message: 'iDataGH order #' + res.order_id + ' — ' + (res.order_status || 'Processing') + (res.amount != null ? ' (GH₵' + res.amount + ')' : '') + '.' };
 }
 
 function getIdataghWalletBalance_() {
   var mode = getSetting_('IDATAGH_MODE') || 'mock';
   if (mode !== 'live') {
-    return { success: false, message: 'iDataGH Mode is set to Mock — switch to Live to check a real balance (once the adapter below is wired up to iDataGH\'s real API).' };
+    return { success: false, message: 'iDataGH Mode is set to Mock — switch to Live to check your real wallet balance.' };
   }
-  return { success: false, message: 'iDataGH\'s real API endpoints aren\'t wired up yet — share their API docs and this can be connected the same way Geosam\'s was.' };
+  try {
+    var res = idataghRequest_(IDATAGH_ENDPOINTS.walletBalance, 'get');
+    if (res.status !== 'success') return { success: false, message: 'Could not retrieve balance.' };
+    // Single overall balance (not split by network like Geosam's) — the
+    // admin UI renders whatever keys are present in `balances` generically.
+    return { success: true, balances: { Overall: 'GH₵' + Number(res.balance).toFixed(2) } };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
 }
 
 function testIdataghConnection_() {
-  return getIdataghWalletBalance_();
+  var result = getIdataghWalletBalance_();
+  if (!result.success) return result;
+  return { success: true, message: 'Connected. Wallet balance: ' + result.balances.Overall + '.' };
+}
+
+/**
+ * Returns [{ packageId, size, amountMB, basePrice }, ...] for a network,
+ * straight from iDataGH's live package list.
+ */
+function fetchIdataghPackages_(network) {
+  var networkCode = IDATAGH_NETWORK_CODE[network] || String(network).toLowerCase();
+  var res = idataghRequest_(IDATAGH_ENDPOINTS.packages + '?network=' + encodeURIComponent(networkCode), 'get');
+  // iDataGH's own docs show this response oddly double-wrapped (an object
+  // nested inside another set of braces) — handle both shapes defensively.
+  var payload = Array.isArray(res) ? res[0] : res;
+  var list = (payload && payload.packages) || [];
+  return list.map(function (p) {
+    var sizeGb = Number(p.data_size) || 0;
+    return {
+      packageId: p.package_id,
+      size: sizeGb + 'GB',
+      amountMB: Math.round(sizeGb * 1000),
+      basePrice: Number(p.price) || 0
+    };
+  });
+}
+
+/**
+ * Client-callable (admin only). Pulls iDataGH's real package list + prices
+ * for a network and upserts them into your Packages sheet (matched by
+ * network + size). Unlike Geosam, iDataGH DOES expose live pricing, so this
+ * overwrites BasePrice for matched packages — if you also sell through
+ * Geosam, re-check prices there after syncing since the two providers may
+ * cost differently. New packages get a starting +15% markup, same as the
+ * initial starter pricing.
+ */
+function syncIdataghPackages(token, network) {
+  requireAdminSession_(token);
+  if (NETWORKS.indexOf(network) === -1) throw new Error('Unknown network.');
+
+  var fetched = fetchIdataghPackages_(network);
+  if (!fetched.length) throw new Error('iDataGH returned no packages for ' + network + '.');
+
+  var sheet = getSheet_(SHEET_PACKAGES, PACKAGE_HEADERS);
+  var existing = getAllPackages_();
+  var col = {
+    base: PACKAGE_HEADERS.indexOf('BasePrice') + 1,
+    mb: PACKAGE_HEADERS.indexOf('AmountMB') + 1,
+    idatagh: PACKAGE_HEADERS.indexOf('IdataghPackageId') + 1,
+    updated: PACKAGE_HEADERS.indexOf('LastUpdated') + 1
+  };
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    fetched.forEach(function (item) {
+      var id = packageId_(network, item.size);
+      var match = existing.filter(function (p) { return p.ID === id; })[0];
+      if (match) {
+        sheet.getRange(match._row, col.base).setValue(item.basePrice);
+        sheet.getRange(match._row, col.mb).setValue(item.amountMB);
+        sheet.getRange(match._row, col.idatagh).setValue(item.packageId);
+        sheet.getRange(match._row, col.updated).setValue(new Date());
+      } else {
+        var sellingPrice = Math.ceil((item.basePrice * 1.15) * 100) / 100;
+        sheet.appendRow([id, network, item.size, '30 Days', item.amountMB, item.basePrice, sellingPrice, true, new Date(), item.packageId]);
+      }
+    });
+  } finally {
+    lock.releaseLock();
+  }
+  return getAdminPackages_().filter(function (p) { return p.network === network; });
 }
 
 // ---------------------------------------------------------------------------
@@ -1184,6 +1352,7 @@ function fulfillOrder(token, orderId) {
     throw new Error('No matching package with a data amount (MB) found for ' + order.Network + ' ' + order.Size + '. Check the Pricing tab.');
   }
   order.AmountMB = pkg.AmountMB;
+  order.IdataghPackageId = pkg.IdataghPackageId;
   order.Reference = orderId + '-F' + Utilities.getUuid().split('-')[0].toUpperCase();
 
   var provider = getSetting_('DATA_PROVIDER') || 'geosam';
@@ -1399,10 +1568,29 @@ function getDashboardStats_() {
   var pendingCount = orders.filter(function (o) { return o.Status === ORDER_STATUS.PENDING; }).length;
   var deliveredCount = orders.filter(function (o) { return o.Status === ORDER_STATUS.DELIVERED; }).length;
 
-  var todayStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT', 'yyyy-MM-dd');
+  var tz = Session.getScriptTimeZone() || 'GMT';
+  var todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   var todayOrders = orders.filter(function (o) {
-    return Utilities.formatDate(new Date(o.Timestamp), Session.getScriptTimeZone() || 'GMT', 'yyyy-MM-dd') === todayStr;
+    return Utilities.formatDate(new Date(o.Timestamp), tz, 'yyyy-MM-dd') === todayStr;
   });
+
+  // Last 14 days of sales/profit, oldest first, for the dashboard trend chart.
+  var days = [];
+  for (var i = 13; i >= 0; i--) {
+    var d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(Utilities.formatDate(d, tz, 'yyyy-MM-dd'));
+  }
+  var byDay = {};
+  days.forEach(function (d) { byDay[d] = { date: d, sales: 0, profit: 0 }; });
+  counted.forEach(function (o) {
+    var d = Utilities.formatDate(new Date(o.Timestamp), tz, 'yyyy-MM-dd');
+    if (byDay[d]) {
+      byDay[d].sales += Number(o.SellingPrice) || 0;
+      byDay[d].profit += Number(o.Profit) || 0;
+    }
+  });
+  var salesTrend = days.map(function (d) { return byDay[d]; });
 
   return {
     totalSales: totalSales,
@@ -1410,7 +1598,8 @@ function getDashboardStats_() {
     pendingCount: pendingCount,
     deliveredCount: deliveredCount,
     totalOrders: orders.length,
-    ordersToday: todayOrders.length
+    ordersToday: todayOrders.length,
+    salesTrend: salesTrend
   };
 }
 

@@ -5,8 +5,8 @@ bundles, plus a private admin portal (username + password login) where you
 set your own selling prices, fulfill orders through **Geosam or iDataGH**
 (switch instantly if one is down), and track your profit per order.
 
-- `Code.gs` — backend: Google Sheets as the database, all server logic, and the
-  Geosam API adapter.
+- `Code.gs` — backend: Google Sheets as the database, all server logic, and
+  the Geosam + iDataGH API adapters.
 - `index.html` — the entire UI (storefront + admin portal) as one page.
 
 ## 1. Create the project
@@ -26,7 +26,7 @@ authorize the script (Sheets + URL Fetch access) — approve it. Uploading a
 carousel photo later will prompt a second time for Google Drive access.
 
 This creates three sheets:
-- **Packages** — `ID, Network, Size, Validity, AmountMB, BasePrice, SellingPrice, Active, LastUpdated`
+- **Packages** — `ID, Network, Size, Validity, AmountMB, BasePrice, SellingPrice, Active, LastUpdated, IdataghPackageId`
 - **Orders** — `OrderID, Timestamp, CustomerName, RecipientPhone, PayerPhone, Network, Size, SellingPrice, BasePrice, Profit, MoMoRef, Status, ProviderRef, Notes, UpdatedAt, Provider`
 - **Carousel** — `ID, Url, Caption, Order, Active, FileId, UploadedAt`
 
@@ -64,7 +64,7 @@ after an update:
 3. Version dropdown → **New version** → **Deploy**.
 4. Reload the page (or click the refresh icon — see "Faster loading" below).
    Every screen (storefront footer, admin sidebar/login) shows a small
-   version tag like `v1.7.0` in low-contrast text — if it doesn't match the
+   version tag like `v1.8.0` in low-contrast text — if it doesn't match the
    version in this repo's `Code.gs` (`APP_VERSION` near the top), the
    redeploy didn't take effect yet.
 
@@ -91,6 +91,11 @@ browser, on any device, for whoever has the current credentials.
 Login uses a session token stored in this browser's `localStorage`, valid
 for 6 hours and renewed automatically while you're active — logging in again
 is only needed after a long idle period or on a new device/browser.
+
+The login screen itself doesn't display the default credentials anywhere —
+they're only ever printed in the one-time `setupSheets` confirmation message
+in the Apps Script editor (and here in this README), so nothing sensitive
+shows on a page anyone can load.
 
 If you ever get locked out (forgot the password), reset it from the Apps
 Script editor: **Project Settings → Script properties**, delete
@@ -155,15 +160,39 @@ section to touch.
 
 ### iDataGH
 
-This adapter is a **placeholder** — iDataGH's real API isn't documented
-here yet. Its card works in Mock mode out of the box (so you can test the
-provider-switching flow), but Live mode will fail until the adapter is
-wired up to iDataGH's real endpoints. That's in the **IDATAGH ADAPTER**
-section of `Code.gs` (`buyIdataghBundle_()`, `checkIdataghTransactionStatus_()`,
-`getIdataghWalletBalance_()`), clearly marked with `TODO` comments for the
-base URL, auth header, and request/response shapes. Share iDataGH's API
-docs (the same way Geosam's were shared) and those TODOs get filled in the
-same way Geosam's adapter was built from a placeholder to the real thing.
+Wired to iDataGH's actual published API (https://idatagh.com/api-documentation/):
+
+| Purpose | Endpoint |
+|---|---|
+| Place an order | `POST /wp-json/custom/v1/place-order` |
+| Check an order | `GET /wp-json/custom/v1/order-status?order_id=<id>` |
+| Wallet balance | `GET /wp-json/custom/v1/wallet-balance` |
+| List packages | `GET /wp-json/custom/v1/packages?network=<mtn\|telecel\|airteltigo>` |
+
+Auth is `Authorization: Bearer <your_api_key>` + `Content-Type: application/json`.
+
+**Unlike Geosam, iDataGH *does* expose a live package list** — each package
+has its own numeric `package_id`, required to place an order (not a
+data-in-MB amount). That's what **Pricing → Sync from iDataGH** is for: it
+pulls iDataGH's real prices and package IDs for a network and matches them
+into your existing packages by size (or creates new ones with a +15%
+starting markup). Because base price is a single shared field per package,
+syncing overwrites it with iDataGH's price — if you also sell through
+Geosam, re-check that package's base price manually after syncing, since
+the two providers' costs may differ.
+
+iDataGH also assigns its own order ID when you place an order (there's no
+client-supplied reference the way Geosam has) — that ID becomes the
+order's `ProviderRef` and is what gets polled on **Check iDataGH Status**.
+
+Setup: paste your iDataGH API key in its card, switch its Mode to **Live**,
+sync pricing for each network, make sure iDataGH is the **active provider**
+above, then click **Test connection** or **Check wallet balance** (a single
+overall figure, unlike Geosam's per-network balances).
+
+Everything iDataGH-specific lives in the **IDATAGH ADAPTER** section of
+`Code.gs` (`buyIdataghBundle_()`, `checkIdataghTransactionStatus_()`,
+`getIdataghWalletBalance_()`, `fetchIdataghPackages_()`).
 
 ## 6. How the money flow works
 
@@ -253,6 +282,32 @@ store's live pricing/delivery/payment info as context and keeps it scoped to
 answering store-related questions; if a live call ever fails for any reason,
 it silently falls back to the same Mock-mode FAQ responder rather than
 breaking the chat.
+
+## 7d. "Why choose us" & copy-to-clipboard
+
+A "Why choose \<your store name\>" section with four value-prop cards (Fast
+Delivery, Secure Payment, Best Local Prices, Real Support) sits below the
+package grid on the storefront. The copy is static in `renderStore()` in
+`index.html` — edit it there if you want different wording.
+
+In the buy modal's payment box, tapping the small copy icon next to your
+MoMo number copies it straight to the customer's clipboard (with a fallback
+for older browsers that don't support the Clipboard API).
+
+## 7e. Business logo
+
+**Store Setup → Business Logo** lets you upload an image (same 5MB limit
+and Drive-backed storage as the carousel) shown next to your store name in
+both the storefront nav and the admin sidebar, replacing the default icon.
+Remove it any time to revert to the default.
+
+## 7f. Dashboard sales chart
+
+The admin **Dashboard** tab now includes a 14-day sales/profit line chart
+(a hand-rolled inline SVG — no charting library) fed by `getDashboardStats_()`
+in `Code.gs`, which buckets delivered/processing/paid orders by day for the
+last 14 days. It fills in automatically as orders come through; a new store
+just shows a flat line at zero until then.
 
 ## 8. Icons & system color
 
