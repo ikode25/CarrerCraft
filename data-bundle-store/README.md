@@ -22,11 +22,13 @@ and track your profit per order.
 
 In the Apps Script editor toolbar, select the `setupSheets` function from the
 dropdown next to ▶ **Run**, and run it once. The first run will ask you to
-authorize the script (Sheets + URL Fetch access) — approve it.
+authorize the script (Sheets + URL Fetch access) — approve it. Uploading a
+carousel photo later will prompt a second time for Google Drive access.
 
-This creates two sheets:
+This creates three sheets:
 - **Packages** — `ID, Network, Size, Validity, AmountMB, BasePrice, SellingPrice, Active, LastUpdated`
 - **Orders** — `OrderID, Timestamp, CustomerName, RecipientPhone, PayerPhone, Network, Size, SellingPrice, BasePrice, Profit, MoMoRef, Status, GeosamOrderId, Notes, UpdatedAt`
+- **Carousel** — `ID, Url, Caption, Order, Active, FileId, UploadedAt`
 
 It also seeds **starter pricing** for all three networks so your storefront
 isn't empty on day one, and sets up the **default admin login**:
@@ -43,6 +45,29 @@ is always a manual step).
 
 Click **Deploy** and copy the web app URL — that's your storefront link
 (`.../exec`). Share that with customers.
+
+### ⚠️ Whenever you update `Code.gs` or `index.html` later
+
+Saving the file in the editor is **not enough** — the live `/exec` URL keeps
+serving whatever was last *deployed* until you publish a new version. This is
+the #1 cause of "I changed the code but nothing changed" or a blank page
+after an update:
+
+1. **Deploy → Manage deployments.**
+2. Click the pencil/edit icon on your existing deployment (don't create a
+   brand-new one — that gives you a different URL).
+3. Version dropdown → **New version** → **Deploy**.
+4. Reload the page. Every screen (storefront footer, admin sidebar/login)
+   shows a small version tag like `v1.5.0` in low-contrast text — if it
+   doesn't match the version in this repo's `Code.gs` (`APP_VERSION` near the
+   top), the redeploy didn't take effect yet.
+
+If the page is still completely blank (not even the dark "Loading…" spinner,
+which is plain HTML/CSS with no JavaScript dependency) after confirming the
+version tag is current, that points to the browser rather than the code —
+try an incognito/private window or a different browser. Google's Apps Script
+hosting renders your page inside a sandboxed iframe, which some browsers'
+third-party-cookie or tracking-prevention settings block.
 
 ## 4. Admin login
 
@@ -110,11 +135,12 @@ section to touch.
 
 ## 6. How the money flow works
 
-1. Customer picks a bundle, sees your MoMo number/name/amount, pays, then
-   submits the order with their MoMo reference. Order status:
-   **Pending Payment**.
-2. You check your MoMo statement. If it matches, click **Mark Paid** in
-   Orders. Status: **Paid - Awaiting Fulfillment**.
+1. Customer picks a bundle, sees your MoMo number/name/amount, pays via
+   Mobile Money, then submits the order along with the **Transaction ID**
+   from their MoMo payment confirmation (required — the order can't be
+   submitted without it). Order status: **Pending Payment**.
+2. You check your MoMo statement for that Transaction ID. If it matches,
+   click **Mark Paid** in Orders. Status: **Paid - Awaiting Fulfillment**.
 3. Click **Fulfill via Geosam** — this calls Send Bundle with a freshly
    generated reference. Geosam's API is **asynchronous**: a successful reply
    only means "request received and is being processed," so the order moves
@@ -148,7 +174,27 @@ same idea as Geosam's own "Network: Hi, the network is good today!" bar.
   entirely if you don't want it shown.
 
 The banner text is composed server-side in `composeBanner_()` in `Code.gs` —
-edit `BANNER_STATUS_DEFAULTS` there if you want different default wording.
+edit `BANNER_STATUS_DEFAULTS` there if you want different default wording. It
+scrolls continuously (a CSS marquee) unless the visitor's OS has "reduce
+motion" turned on, in which case it shows statically for accessibility.
+
+## 7b. Hero carousel
+
+The admin **Carousel** tab lets you upload photos (JPG/PNG/WebP, max 5MB
+each) that rotate as a full-width banner at the top of your storefront, right
+below the status banner. Each photo can have an optional caption overlay,
+can be shown/hidden without deleting it, and deleting it also removes the
+file from Google Drive.
+
+- Photos are stored in a Drive folder named **"Data Bundle Store - Carousel
+  Images"**, shared "anyone with the link can view" so they load on the
+  public storefront.
+- With 2+ visible photos, the carousel auto-advances every 4.5 seconds with
+  dot navigation and (on desktop) arrow buttons; clicking a dot/arrow resets
+  the auto-advance timer. With 0 photos, the carousel section is hidden
+  entirely — the storefront looks the same as before you added any.
+- The first upload will prompt you to re-authorize the Apps Script project
+  for Google Drive access — that's expected, approve it.
 
 ## 8. Icons & system color
 

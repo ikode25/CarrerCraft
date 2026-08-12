@@ -12,6 +12,10 @@
  *  enter your own base prices manually (see the Pricing tab), matching what
  *  you see in your Geosam dashboard/shop.
  *
+ *  Note: the storefront hero carousel stores uploaded images in a Google
+ *  Drive folder ("Data Bundle Store - Carousel Images") — the first upload
+ *  will prompt you to re-authorize the project for Drive access.
+ *
  *  SETUP (see README.md for the full walkthrough):
  *   1. Create a new Google Sheet.
  *   2. Extensions > Apps Script. Delete the default code.
@@ -34,11 +38,20 @@
 // 1. CONFIG / CONSTANTS
 // ---------------------------------------------------------------------------
 
+// Bump this string with every release. It's shown in the storefront footer
+// and the admin sidebar so you can tell, at a glance, whether a redeploy
+// actually picked up the latest code (Apps Script only serves new code to
+// the live /exec URL after Deploy > Manage deployments > Edit > New version
+// > Deploy — saving the file alone is not enough).
+var APP_VERSION = 'v1.5.0';
+
 var SHEET_PACKAGES = 'Packages';
 var SHEET_ORDERS = 'Orders';
+var SHEET_CAROUSEL = 'Carousel';
 
 var PACKAGE_HEADERS = ['ID', 'Network', 'Size', 'Validity', 'AmountMB', 'BasePrice', 'SellingPrice', 'Active', 'LastUpdated'];
 var ORDER_HEADERS = ['OrderID', 'Timestamp', 'CustomerName', 'RecipientPhone', 'PayerPhone', 'Network', 'Size', 'SellingPrice', 'BasePrice', 'Profit', 'MoMoRef', 'Status', 'GeosamOrderId', 'Notes', 'UpdatedAt'];
+var CAROUSEL_HEADERS = ['ID', 'Url', 'Caption', 'Order', 'Active', 'FileId', 'UploadedAt'];
 
 var NETWORKS = ['MTN', 'Telecel', 'AirtelTigo'];
 
@@ -251,6 +264,7 @@ function sheetRowsToObjects_(sheet, headers) {
 function setupSheets() {
   getSheet_(SHEET_PACKAGES, PACKAGE_HEADERS);
   getSheet_(SHEET_ORDERS, ORDER_HEADERS);
+  getSheet_(SHEET_CAROUSEL, CAROUSEL_HEADERS);
   seedMockPackagesIfEmpty_();
   ensureAdminCredentials_();
   return 'Sheets are ready. Admin login: admin / admin123 (change it in the Account tab).';
@@ -528,6 +542,115 @@ function seedMockPackagesIfEmpty_() {
 }
 
 // ---------------------------------------------------------------------------
+// 6b. CAROUSEL (storefront hero images)
+// ---------------------------------------------------------------------------
+// Uploaded images are stored in a Google Drive folder ("Data Bundle Store -
+// Carousel Images"), shared "anyone with the link can view", and referenced
+// by URL from the Carousel sheet. The first time you upload an image, Apps
+// Script will prompt you to re-authorize the project for Drive access.
+// ---------------------------------------------------------------------------
+
+var CAROUSEL_FOLDER_NAME = 'Data Bundle Store - Carousel Images';
+var MAX_CAROUSEL_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
+
+function getCarouselFolder_() {
+  var it = DriveApp.getFoldersByName(CAROUSEL_FOLDER_NAME);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(CAROUSEL_FOLDER_NAME);
+}
+
+function getAllCarousel_() {
+  var sheet = getSheet_(SHEET_CAROUSEL, CAROUSEL_HEADERS);
+  var rows = sheetRowsToObjects_(sheet, CAROUSEL_HEADERS);
+  rows.sort(function (a, b) { return (Number(a.Order) || 0) - (Number(b.Order) || 0); });
+  return rows;
+}
+
+/** Client-callable (public). Active images only, in display order. */
+function getCarouselImages_() {
+  return getAllCarousel_()
+    .filter(function (c) { return c.Active === true || c.Active === 'TRUE'; })
+    .map(function (c) { return { id: c.ID, url: c.Url, caption: c.Caption }; });
+}
+
+function getAdminCarousel_() {
+  return getAllCarousel_().map(function (c) {
+    return { id: c.ID, url: c.Url, caption: c.Caption, active: c.Active === true || c.Active === 'TRUE' };
+  });
+}
+
+/** Client-callable (admin only). */
+function getAdminCarouselImages(token) {
+  requireAdminSession_(token);
+  return getAdminCarousel_();
+}
+
+/**
+ * Client-callable (admin only). payload: { dataUrl, caption, fileName }
+ * dataUrl is a base64 data: URL from a <input type="file"> read via
+ * FileReader.readAsDataURL() on the client.
+ */
+function uploadCarouselImage(token, payload) {
+  requireAdminSession_(token);
+  payload = payload || {};
+  var match = /^data:(image\/[a-zA-Z0-9+.\-]+);base64,(.+)$/.exec(payload.dataUrl || '');
+  if (!match) throw new Error('That doesn\'t look like an image file. Please choose a JPG, PNG, or WebP image.');
+
+  var mimeType = match[1];
+  var bytes = Utilities.base64Decode(match[2]);
+  if (bytes.length > MAX_CAROUSEL_IMAGE_BYTES) {
+    throw new Error('Image is too large (max 5MB). Please compress it and try again.');
+  }
+
+  var blob = Utilities.newBlob(bytes, mimeType, payload.fileName || 'carousel-image');
+  var folder = getCarouselFolder_();
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  var url = 'https://drive.google.com/uc?export=view&id=' + file.getId();
+
+  var sheet = getSheet_(SHEET_CAROUSEL, CAROUSEL_HEADERS);
+  var existing = getAllCarousel_();
+  var nextOrder = existing.reduce(function (max, c) { return Math.max(max, Number(c.Order) || 0); }, 0) + 1;
+  var id = 'CAR-' + Utilities.getUuid().split('-')[0].toUpperCase();
+
+  sheet.appendRow([id, url, String(payload.caption || '').trim(), nextOrder, true, file.getId(), new Date()]);
+  return { success: true, id: id, url: url };
+}
+
+/** Client-callable (admin only). Show/hide an image on the storefront carousel. */
+function toggleCarouselActive(token, id, active) {
+  requireAdminSession_(token);
+  var sheet = getSheet_(SHEET_CAROUSEL, CAROUSEL_HEADERS);
+  var row = findRowById_(sheet, CAROUSEL_HEADERS, id);
+  if (row === -1) throw new Error('Image not found.');
+  sheet.getRange(row, CAROUSEL_HEADERS.indexOf('Active') + 1).setValue(!!active);
+  return { success: true };
+}
+
+/** Client-callable (admin only). Removes the image from the carousel and trashes the Drive file. */
+function deleteCarouselImage(token, id) {
+  requireAdminSession_(token);
+  var sheet = getSheet_(SHEET_CAROUSEL, CAROUSEL_HEADERS);
+  var row = findRowById_(sheet, CAROUSEL_HEADERS, id);
+  if (row === -1) throw new Error('Image not found.');
+  var fileId = sheet.getRange(row, CAROUSEL_HEADERS.indexOf('FileId') + 1).getValue();
+  sheet.deleteRow(row);
+  if (fileId) {
+    try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) { /* file already gone — fine */ }
+  }
+  return { success: true };
+}
+
+function findRowById_(sheet, headers, id) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+  var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (ids[i][0] === id) return i + 2;
+  }
+  return -1;
+}
+
+// ---------------------------------------------------------------------------
 // 7. GEOSAM ADAPTER
 // ---------------------------------------------------------------------------
 // Based on Geosam's published API docs (https://geosams.com/controller/api-documentation/):
@@ -700,7 +823,7 @@ function submitOrder(payload) {
     throw new Error('Enter a valid MoMo number you paid from, e.g. 0244000000.');
   }
   if (!payload.momoRef || String(payload.momoRef).trim().length < 3) {
-    throw new Error('Enter the MoMo transaction reference from your payment.');
+    throw new Error('Enter the Transaction ID from your Mobile Money payment confirmation.');
   }
   if (!payload.packageId) {
     throw new Error('Choose a data bundle.');
@@ -969,8 +1092,10 @@ function getDashboardStats_() {
 /** Client-callable (public). Everything the storefront needs in one call. */
 function getStoreBootstrap() {
   return {
+    appVersion: APP_VERSION,
     settings: getPublicSettings_(),
     packagesByNetwork: getStorefrontPackages(),
+    carousel: getCarouselImages_(),
     networks: NETWORKS
   };
 }
@@ -983,14 +1108,16 @@ function getStoreBootstrap() {
 function getAdminBootstrap(token) {
   ensureAdminCredentials_();
   if (!isValidAdminSession_(token)) {
-    return { authorized: false };
+    return { authorized: false, appVersion: APP_VERSION };
   }
   return {
     authorized: true,
+    appVersion: APP_VERSION,
     settings: getAdminSettings_(),
     packages: getAdminPackages_(),
     orders: getAdminOrders_(),
     stats: getDashboardStats_(),
+    carousel: getAdminCarousel_(),
     networks: NETWORKS,
     orderStatuses: ORDER_STATUS
   };
